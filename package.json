@@ -1,0 +1,20 @@
+{
+  "name": "fraudx-claim-eval",
+  "version": "1.0.0",
+  "description": "Golden-claim promptfoo eval for the FraudX document-ingestion and report pipeline",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "eval": "promptfoo eval -c promptfooconfig.yaml --no-cache --output results.json",
+    "score": "node scripts/score-dashboard.js",
+    "eval:full": "npm run eval && npm run score",
+    "mock-server": "node test/mock-server.js"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0",
+    "promptfoo": "^0.100.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
