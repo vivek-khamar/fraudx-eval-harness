@@ -1,0 +1,32 @@
+{
+  "results": {
+    "results": [
+      {
+        "response": {
+          "output": {
+            "ingestion": { "timeMs": 60000 },
+            "processing": { "timeMs": 300000 },
+            "report": {
+              "summary": "a generated summary",
+              "qa": [
+                {
+                  "questionId": "q1_diagnosis",
+                  "answer": "Type 2 diabetes mellitus",
+                  "citation": { "documentId": "doc_0112", "page": 4 }
+                }
+              ]
+            }
+          }
+        },
+        "gradingResult": {
+          "pass": true,
+          "score": 1,
+          "namedScores": {
+            "qa_summary_accuracy": 0.9,
+            "citation_accuracy": 1
+          }
+        }
+      }
+    ]
+  }
+}
