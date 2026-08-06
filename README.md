@@ -76,6 +76,21 @@ FRAUDX_TEST_ENDPOINT=http://localhost:4001 npm run eval:full   # terminal 2
 Wrap the same two commands (`npm run eval`, `npm run score`) in a CI workflow step —
 nothing about the repo changes between local and CI execution.
 
+## Known environment limitations
+
+In some environments, the installed `promptfoo` + `drizzle-orm` + `better-sqlite3`
+combination fails to persist ANY eval run to promptfoo's local results database:
+
+```
+SqliteError: FOREIGN KEY constraint failed
+    at ... models/eval.js:141
+```
+
+This reproduces even with promptfoo's own stock `echo` provider and no custom
+code — it is not caused by anything in this repo. If you hit it, try upgrading
+promptfoo (`npm install promptfoo@latest`) — this repo pins `^0.100.0`, and a
+newer patch/minor release may resolve the underlying dependency issue.
+
 ## Scaling to multiple claims
 
 This repo is deliberately built around **one** golden claim, per the FraudX

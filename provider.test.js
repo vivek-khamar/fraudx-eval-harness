@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { callApi } = require('./provider');
+const Provider = require('./provider');
 
 function fakeContext() {
   return {
@@ -44,7 +44,8 @@ test('callApi calls ingest then process against FRAUDX_TEST_ENDPOINT and returns
     process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
   });
 
-  const result = await callApi('FX-GOLD-5K-v1', fakeContext());
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
   assert.equal(calls.length, 2);
   assert.equal(calls[0].url, 'https://fake.fraudx.test/internal/eval/ingest');
@@ -75,7 +76,8 @@ test('callApi never reads or transmits context.vars.expected', async (t) => {
     process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
   });
 
-  await callApi('FX-GOLD-5K-v1', fakeContext());
+  const provider = new Provider();
+  await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
   for (const body of sentBodies) {
     assert.ok(!body.includes('THE GOLD ANSWER'), 'the answer key must never be sent to the pipeline');
@@ -86,8 +88,9 @@ test('callApi throws a clear error when FRAUDX_TEST_ENDPOINT is not set', async 
   const original = process.env.FRAUDX_TEST_ENDPOINT;
   delete process.env.FRAUDX_TEST_ENDPOINT;
   try {
+    const provider = new Provider();
     await assert.rejects(
-      () => callApi('FX-GOLD-5K-v1', fakeContext()),
+      () => provider.callApi('FX-GOLD-5K-v1', fakeContext()),
       /FRAUDX_TEST_ENDPOINT is not set/
     );
   } finally {
@@ -107,8 +110,9 @@ test('callApi surfaces a clear error when the ingest endpoint responds with a no
     process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
   });
 
+  const provider = new Provider();
   await assert.rejects(
-    () => callApi('FX-GOLD-5K-v1', fakeContext()),
+    () => provider.callApi('FX-GOLD-5K-v1', fakeContext()),
     /Ingestion failed for FX-GOLD-5K-v1: 500 boom/
   );
 });
