@@ -1,0 +1,16 @@
+{
+  "summarySynopsis": "58yo male, prior back surgery, submitted claim for lumbar spine treatment following a workplace injury.",
+  "fraudScoreBand": { "min": 62, "max": 78 },
+  "qa": [
+    {
+      "questionId": "q1_diagnosis",
+      "answer": "Type 2 diabetes mellitus",
+      "citation": { "documentId": "doc_0112", "page": 4 }
+    },
+    {
+      "questionId": "q2_prior_claims",
+      "answer": "Two prior claims in the last 24 months",
+      "citation": { "documentId": "doc_0087", "page": 1 }
+    }
+  ]
+}
