@@ -12,7 +12,10 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   would be meaningless.
 - **The eval triggers real work, nothing is simulated.** `provider.js` calls your
   actual ingestion and processing endpoints and times them with its own stopwatch.
-  If you have 20 golden claims, that's 20 full pipeline runs, not a mock.
+  If you have 20 golden claims, that's 20 full pipeline runs, not a mock. Each
+  call is bounded by an `AbortSignal` timeout, configurable via
+  `FRAUDX_HTTP_TIMEOUT_MS` (default 900000ms), so a hung endpoint can't block
+  the eval forever.
 - **Time never enters a promptfoo assertion.** Ingest time and processing time are
   just fields on the provider's output, already timed by the time promptfoo sees
   them. `scripts/score-dashboard.js` applies the budget formula
@@ -90,9 +93,10 @@ SqliteError: FOREIGN KEY constraint failed
 ```
 
 This reproduces even with promptfoo's own stock `echo` provider and no custom
-code — it is not caused by anything in this repo. If you hit it, try upgrading
-promptfoo (`npm install promptfoo@latest`) — this repo pins `^0.100.0`, and a
-newer patch/minor release may resolve the underlying dependency issue.
+code — it is not caused by anything in this repo. Upgrading promptfoo
+(`npm install promptfoo@latest`) already resolved this: this repo now pins
+`^0.122.0`, and a real end-to-end run against that version no longer
+reproduces the bug.
 
 ## Scaling to multiple claims
 

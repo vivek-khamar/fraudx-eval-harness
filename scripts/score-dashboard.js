@@ -5,8 +5,6 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 
-const INGEST_BUDGET_MS = Number(process.env.INGEST_BUDGET_MS || 120000);
-const CLAIM_BUDGET_MS = Number(process.env.CLAIM_BUDGET_MS || 600000);
 const RUBRIC_WEIGHT = 0.6;
 const CITATION_WEIGHT = 0.4;
 
@@ -15,6 +13,8 @@ function budgetScore(budgetMs, measuredMs) {
 }
 
 function scoreDashboard(resultsFilePath) {
+  const ingestBudgetMs = Number(process.env.INGEST_BUDGET_MS || 120000);
+  const claimBudgetMs = Number(process.env.CLAIM_BUDGET_MS || 600000);
   const raw = fs.readFileSync(resultsFilePath, 'utf8');
   const parsed = JSON.parse(raw);
   const result = parsed.results.results[0];
@@ -28,8 +28,8 @@ function scoreDashboard(resultsFilePath) {
   const output = result.response.output;
   const namedScores = result.gradingResult.namedScores;
 
-  const ingestTime = budgetScore(INGEST_BUDGET_MS, output.ingestion.timeMs);
-  const claimProcTime = budgetScore(CLAIM_BUDGET_MS, output.processing.timeMs);
+  const ingestTime = budgetScore(ingestBudgetMs, output.ingestion.timeMs);
+  const claimProcTime = budgetScore(claimBudgetMs, output.processing.timeMs);
 
   const rubricScore = namedScores.qa_summary_accuracy;
   const citationScore = namedScores.citation_accuracy;

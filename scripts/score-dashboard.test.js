@@ -11,7 +11,24 @@ test('budgetScore saturates at 100 when at or under budget, and scales down prop
   assert.equal(budgetScore(600000, 1200000), 50);
 });
 
-test('scoreDashboard reads results.json and computes all four dashboard numbers', () => {
+test('scoreDashboard reads results.json and computes all four dashboard numbers', (t) => {
+  const originalIngestBudget = process.env.INGEST_BUDGET_MS;
+  const originalClaimBudget = process.env.CLAIM_BUDGET_MS;
+  delete process.env.INGEST_BUDGET_MS;
+  delete process.env.CLAIM_BUDGET_MS;
+  t.after(() => {
+    if (originalIngestBudget === undefined) {
+      delete process.env.INGEST_BUDGET_MS;
+    } else {
+      process.env.INGEST_BUDGET_MS = originalIngestBudget;
+    }
+    if (originalClaimBudget === undefined) {
+      delete process.env.CLAIM_BUDGET_MS;
+    } else {
+      process.env.CLAIM_BUDGET_MS = originalClaimBudget;
+    }
+  });
+
   const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
   const dashboard = scoreDashboard(fixture);
 
@@ -19,6 +36,32 @@ test('scoreDashboard reads results.json and computes all four dashboard numbers'
   assert.equal(dashboard.claimProcTime, 100);
   assert.equal(dashboard.acc, 94);
   assert.equal(dashboard.entAcc, null);
+});
+
+test('scoreDashboard honors INGEST_BUDGET_MS/CLAIM_BUDGET_MS overrides read from process.env', (t) => {
+  const originalIngestBudget = process.env.INGEST_BUDGET_MS;
+  const originalClaimBudget = process.env.CLAIM_BUDGET_MS;
+  process.env.INGEST_BUDGET_MS = '30000';
+  process.env.CLAIM_BUDGET_MS = '100000';
+  t.after(() => {
+    if (originalIngestBudget === undefined) {
+      delete process.env.INGEST_BUDGET_MS;
+    } else {
+      process.env.INGEST_BUDGET_MS = originalIngestBudget;
+    }
+    if (originalClaimBudget === undefined) {
+      delete process.env.CLAIM_BUDGET_MS;
+    } else {
+      process.env.CLAIM_BUDGET_MS = originalClaimBudget;
+    }
+  });
+
+  const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
+  const dashboard = scoreDashboard(fixture);
+
+  // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000.
+  assert.equal(dashboard.ingestTime, budgetScore(30000, 60000)); // 50
+  assert.equal(dashboard.claimProcTime, budgetScore(100000, 300000)); // 33
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {
