@@ -11,22 +11,39 @@ defaultTest:
 tests:
   - vars:
       claimId: "FX-GOLD-5K-v1"
-      documentIds: file://testdata/golden_claim_docs.json
+      bucket: file://testdata/golden_claim_bucket.json
       expected: file://testdata/golden_claim_expected.json
     assert:
       - type: llm-rubric
         metric: qa_summary_accuracy
         value: >-
           Gold summary: {{expected.summarySynopsis}}
-          Gold Q&A: {{expected.qa | dump}}
-          Pass only if the report's summary conveys the same key facts with no
-          hallucinated content, and every answer matches its gold answer's meaning
-          (exact wording not required).
+          Gold Q&A (35 predefined questions with expected risk determinations): {{expected.qa | dump}}
+          Pass only if the report's summary conveys the same key facts with no hallucinated
+          content, and each question's answer reaches the same risk determination as its
+          gold entry (exact wording not required).
       - type: javascript
         metric: citation_accuracy
         threshold: 0.95
         value: |-
-          return context.vars.expected.qa.filter((e) => {
-            const a = output.report.qa.find((x) => x.questionId === e.questionId);
-            return a && a.citation.documentId === e.citation.documentId && a.citation.page === e.citation.page;
-          }).length / context.vars.expected.qa.length;
+          function extractCitationFileNames(answerText) {
+            const fileNames = [];
+            const tagRegex = /<InTextCitation\b([^>]*)>/g;
+            let match;
+            while ((match = tagRegex.exec(answerText)) !== null) {
+              const fileNameMatch = /fileName="([^"]*)"/.exec(match[1]);
+              if (fileNameMatch) fileNames.push(fileNameMatch[1]);
+            }
+            return fileNames;
+          }
+          const expectedWithCitations = context.vars.expected.qa.filter((q) => q.expectedCitationFileNames.length > 0);
+          if (expectedWithCitations.length === 0) {
+            return 1;
+          }
+          const matchCount = expectedWithCitations.filter((q) => {
+            const actual = output.report.questions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
+            if (!actual) return false;
+            const actualFileNames = extractCitationFileNames(actual.answer);
+            return q.expectedCitationFileNames.some((fn) => actualFileNames.includes(fn));
+          }).length;
+          return matchCount / expectedWithCitations.length;

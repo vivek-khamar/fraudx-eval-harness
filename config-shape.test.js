@@ -15,12 +15,16 @@ test('config declares exactly one provider pointing at the local provider.js', (
   assert.equal(config.providers[0].id, 'file://provider.js');
 });
 
-test('config declares one test case wired to the golden claim fixtures', () => {
+test('config pins the grading provider via defaultTest', () => {
+  assert.equal(config.defaultTest.options.provider, 'anthropic:messages:claude-sonnet-4-5');
+});
+
+test('config declares one test case wired to the golden claim bucket fixture', () => {
   assert.ok(Array.isArray(config.tests));
   assert.equal(config.tests.length, 1);
   const testCase = config.tests[0];
   assert.equal(testCase.vars.claimId, 'FX-GOLD-5K-v1');
-  assert.equal(testCase.vars.documentIds, 'file://testdata/golden_claim_docs.json');
+  assert.equal(testCase.vars.bucket, 'file://testdata/golden_claim_bucket.json');
   assert.equal(testCase.vars.expected, 'file://testdata/golden_claim_expected.json');
 });
 
@@ -32,59 +36,37 @@ test('config declares the qa_summary_accuracy (llm-rubric) and citation_accuracy
   const rubric = asserts.find((a) => a.metric === 'qa_summary_accuracy');
   assert.equal(rubric.type, 'llm-rubric');
   assert.ok(rubric.value.includes('{{expected.summarySynopsis}}'));
+  assert.ok(rubric.value.includes('expected.qa | dump'));
+  assert.ok(!rubric.value.includes('{{expected.qa}}'));
 
   const citation = asserts.find((a) => a.metric === 'citation_accuracy');
   assert.equal(citation.type, 'javascript');
   assert.equal(citation.threshold, 0.95);
-  assert.ok(citation.value.includes('context.vars.expected.qa'));
+  assert.ok(citation.value.includes('InTextCitation'));
+  assert.ok(citation.value.includes('expectedCitationFileNames'));
+  assert.ok(citation.value.includes('return'), 'assertion body must use |- with an explicit return, not >- folding');
 });
 
-test('qa_summary_accuracy rubric dumps expected.qa as JSON instead of stringifying the object', () => {
-  const rubric = config.tests[0].assert.find((a) => a.metric === 'qa_summary_accuracy');
-  assert.ok(rubric.value.includes('expected.qa | dump'));
-  assert.ok(!rubric.value.includes('{{expected.qa}}'));
-});
-
-test('citation_accuracy javascript assertion actually computes the fraction of matching citations when executed the way promptfoo runs it', () => {
+test('citation_accuracy assertion, executed the way promptfoo runs it, computes the fraction of matching citations', () => {
   const citation = config.tests[0].assert.find((a) => a.metric === 'citation_accuracy');
-  const value = citation.value;
-  // Mirrors promptfoo's assertions/javascript.js: when the rendered value contains a
-  // newline, it is run as a raw function body via `new Function('output', 'context', functionBody)`,
-  // with NO automatic `return` prepended.
-  assert.ok(value.includes('\n'), 'expected the block scalar to preserve newlines, as promptfoo would see it');
-  const fn = new Function('output', 'context', value);
+  assert.ok(citation.value.includes('\n'), 'value must be multi-line so promptfoo treats it as a raw function body needing an explicit return');
 
-  const claim = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'golden_claim_docs.json'), 'utf8'));
-  const expected = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'golden_claim_expected.json'), 'utf8'));
+  const fn = new Function('output', 'context', citation.value);
 
-  const context = { vars: { claimId: claim.claimId, documentIds: claim, expected } };
-
-  const perfectOutput = {
+  const expectedQa = [
+    { predefinedQuestionId: 1, expectedCitationFileNames: ['a.pdf'] },
+    { predefinedQuestionId: 2, expectedCitationFileNames: ['b.pdf'] },
+    { predefinedQuestionId: 3, expectedCitationFileNames: [] },
+  ];
+  const output = {
     report: {
-      qa: expected.qa.map((e) => ({
-        questionId: e.questionId,
-        answer: e.answer,
-        citation: { documentId: e.citation.documentId, page: e.citation.page },
-      })),
+      questions: [
+        { predefinedQuestionId: 1, answer: 'x <InTextCitation fileName="a.pdf"></InTextCitation>' },
+        { predefinedQuestionId: 2, answer: 'y <InTextCitation fileName="wrong.pdf"></InTextCitation>' },
+        { predefinedQuestionId: 3, answer: 'No sources found' },
+      ],
     },
   };
-  assert.equal(fn(perfectOutput, context), 1);
-
-  const oneWrongOutput = {
-    report: {
-      qa: expected.qa.map((e, i) => ({
-        questionId: e.questionId,
-        answer: e.answer,
-        citation:
-          i === 0
-            ? { documentId: 'doc_9999', page: 999 }
-            : { documentId: e.citation.documentId, page: e.citation.page },
-      })),
-    },
-  };
-  assert.equal(fn(oneWrongOutput, context), 0.5);
-});
-
-test('defaultTest pins the grading provider so a machine-local OPENAI_API_KEY cannot silently switch the judge model', () => {
-  assert.equal(config.defaultTest.options.provider, 'anthropic:messages:claude-sonnet-4-5');
+  const result = fn(output, { vars: { expected: { qa: expectedQa } } });
+  assert.equal(result, 0.5); // 1 of 2 citation-bearing questions matched; question 3 excluded (no citation expected)
 });
