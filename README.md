@@ -29,6 +29,9 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   The `llm-rubric` grading provider is pinned explicitly via `defaultTest.options.provider`
   in `promptfooconfig.yaml`, so a machine-local `OPENAI_API_KEY` can't silently switch
   the judge model.
+- **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
+- **`ingestTime` and `claimProcTime` currently report the same measured value.** The real platform exposes one opaque trigger-to-complete signal for the whole embed+report pipeline (see `docs/superpowers/specs/2026-08-07-fraudx-claim-processing-design.md` if that repo is available to you) — there's no separately observable "ingestion done" milestone today.
+- **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `citation_accuracy` regex-extracts them and matches on `fileName`.
 - **Entity extraction accuracy (`entAcc`) is not implemented yet** — it stays `null`
   in the dashboard output until that scoring is built.
 
