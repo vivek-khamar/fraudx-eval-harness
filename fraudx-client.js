@@ -110,4 +110,178 @@ async function listBucketDocuments(base, bucketId, auth, timeoutMs) {
   return activeDocs.map((doc) => ({ gxMasterId: doc.gxMasterId, fileName: doc.fileName, extension: doc.extension }));
 }
 
-module.exports = { login, postDocumentList, listBucketDocuments, contentTypeForExtension };
+async function getDownloadUrl(base, gxMasterId, auth, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(`${base}/document-processor/api/documents/v1/downloads/presigned-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      body: JSON.stringify({ gxMasterId }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Getting a download URL for gxMasterId ${gxMasterId} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Getting a download URL for gxMasterId ${gxMasterId} failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  const downloadUrl = body?.response?.downloadUrl;
+  if (!downloadUrl) {
+    throw new Error(`Presigned-url response for gxMasterId ${gxMasterId} did not contain response.downloadUrl`);
+  }
+  return downloadUrl;
+}
+
+async function downloadFile(url, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Downloading file timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Downloading file failed: ${res.status} ${await res.text()}`);
+  }
+  return res.arrayBuffer();
+}
+
+async function createClaim(base, auth, claimConfig, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(`${base}/fraudx/api/v1/claims`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      body: JSON.stringify(claimConfig),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Creating a claim timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Creating a claim failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  const bucketId = body?.response?.bucket?.bucketId;
+  if (bucketId == null) {
+    throw new Error('Create-claim response did not contain response.bucket.bucketId');
+  }
+  return bucketId;
+}
+
+async function requestUploadUrls(base, auth, files, newBucketId, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(`${base}/document-processor/api/documents/v2/uploads/direct`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      body: JSON.stringify({ files, gxBucketId: newBucketId, skipGxProcess: true }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Requesting upload URLs for bucket ${newBucketId} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Requesting upload URLs for bucket ${newBucketId} failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  const uploads = body?.response?.uploads;
+  if (!uploads) {
+    throw new Error(`Upload-URL response for bucket ${newBucketId} did not contain response.uploads`);
+  }
+  return uploads;
+}
+
+async function uploadFile(uploadUrl, bytes, contentType, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: bytes,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Uploading file timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Uploading file failed: ${res.status} ${await res.text()}`);
+  }
+}
+
+async function findDocumentByJobId(base, bucketId, jobId, auth, timeoutMs) {
+  const { content } = await postDocumentList(
+    base,
+    bucketId,
+    { size: 50, criteria: [{ column: 'jobId', operator: 'EQUALS', values: [jobId] }], sort: [{ column: 'createdAt', sortType: 'ASC' }], page: 0 },
+    auth,
+    timeoutMs
+  );
+  if (content.length > 1) {
+    throw new Error(`Expected at most one document for jobId ${jobId} in bucket ${bucketId}, got ${content.length}`);
+  }
+  return content[0] || null;
+}
+
+async function waitForDocumentUpload(base, bucketId, jobId, auth, timeoutMs, { pollIntervalMs, pollTimeoutMs }) {
+  const deadline = Date.now() + pollTimeoutMs;
+  for (;;) {
+    const doc = await findDocumentByJobId(base, bucketId, jobId, auth, timeoutMs);
+    if (doc?.error) {
+      throw new Error(`Upload for jobId ${jobId} in bucket ${bucketId} failed: ${doc.error}`);
+    }
+    if (doc?.status === 'Completed') {
+      return doc;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Upload for jobId ${jobId} in bucket ${bucketId} did not reach Completed status within ${pollTimeoutMs}ms (last seen status: ${doc ? doc.status : 'not found yet'})`
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+}
+
+module.exports = {
+  login,
+  postDocumentList,
+  listBucketDocuments,
+  contentTypeForExtension,
+  getDownloadUrl,
+  downloadFile,
+  createClaim,
+  requestUploadUrls,
+  uploadFile,
+  findDocumentByJobId,
+  waitForDocumentUpload,
+};
