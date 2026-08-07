@@ -12,28 +12,110 @@ const server = http.createServer((req, res) => {
   });
   req.on('end', () => {
     res.setHeader('Content-Type', 'application/json');
+    let parsedBody = {};
+    if (body) {
+      try {
+        parsedBody = JSON.parse(body);
+      } catch {
+        // Non-JSON body (e.g. the raw file bytes PUT to /mock-upload) — leave parsedBody as {}.
+      }
+    }
 
-    if (req.method === 'POST' && req.url === '/internal/eval/ingest') {
-      const { documentIds } = JSON.parse(body || '{}');
+    if (req.method === 'POST' && req.url === '/fraudx/api/public/v1/auth/login') {
       res.writeHead(200);
-      res.end(JSON.stringify({ indexedDocumentCount: (documentIds || []).length }));
+      res.end(JSON.stringify({
+        displayMessage: 'Login successfully',
+        response: {
+          customer: { email: 'mock@example.com', userId: 1, lastActiveOrg: 1 },
+          token: 'mock-jwt-token',
+        },
+      }));
       return;
     }
 
-    if (req.method === 'POST' && req.url === '/internal/eval/process') {
+    if (req.method === 'POST' && req.url.startsWith('/document-processor/api/documents/v1/views/list/')) {
+      const isJobIdQuery = (parsedBody.criteria || []).some((c) => c.column === 'jobId');
       res.writeHead(200);
-      res.end(
-        JSON.stringify({
-          report: {
-            summary:
-              '58yo male, prior back surgery, submitted claim for lumbar spine treatment following a workplace injury.',
-            qa: [
-              { questionId: 'q1_diagnosis', answer: 'Type 2 diabetes mellitus', citation: { documentId: 'doc_0112', page: 4 } },
-              { questionId: 'q2_prior_claims', answer: 'Two prior claims in the last 24 months', citation: { documentId: 'doc_0087', page: 1 } },
-            ],
-          },
-        })
-      );
+      res.end(JSON.stringify({
+        displayMessage: 'Document list retrieved successfully.',
+        response: {
+          content: isJobIdQuery
+            ? [{ jobId: parsedBody.criteria[0].values[0], status: 'Completed', error: null, fileName: 'mock.pdf' }]
+            : [
+                { gxMasterId: 1001, fileIsDeleted: false, fileName: 'mock.pdf', extension: 'pdf', fileMasterId: 1 },
+                { gxMasterId: null, fileIsDeleted: true, fileName: 'deleted-mock.pdf', extension: 'pdf', fileMasterId: 2 },
+              ],
+          page: { size: 200, number: 0, totalElements: 2, totalPages: 1 },
+        },
+      }));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/document-processor/api/documents/v1/downloads/presigned-url') {
+      res.writeHead(200);
+      res.end(JSON.stringify({ response: { downloadUrl: `http://localhost:${PORT}/mock-download` } }));
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/mock-download') {
+      res.writeHead(200);
+      res.end(Buffer.from('mock file bytes'));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/fraudx/api/v1/claims') {
+      res.writeHead(200);
+      res.end(JSON.stringify({ response: { bucket: { bucketId: 99999, name: parsedBody.bucketName } } }));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/document-processor/api/documents/v2/uploads/direct') {
+      res.writeHead(200);
+      res.end(JSON.stringify({
+        response: {
+          uploads: parsedBody.files.map((f, i) => ({ fileName: f.fileName, jobId: 5000 + i, uploadUrl: `http://localhost:${PORT}/mock-upload` })),
+          sessionId: 'mock-session',
+        },
+      }));
+      return;
+    }
+
+    if (req.method === 'PUT' && req.url === '/mock-upload') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/fraudx/api/v1/claims/process') {
+      res.writeHead(200);
+      res.end(JSON.stringify({ response: { status: 'PROCESSING', taskId: 'mock-task-id' } }));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/fraudx/api/v1/gx-bucket/list-buckets') {
+      res.writeHead(200);
+      res.end(JSON.stringify({
+        response: { content: [{ bucketId: 99999, bucketStatus: 'SUCCESS', latestReportId: 'mock-report-id' }] },
+      }));
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/fraudx/api/v1/dashboard/reports/mock-report-id') {
+      res.writeHead(200);
+      res.end(JSON.stringify({
+        response: {
+          reportId: 'mock-report-id',
+          summary: 'Mock claim summary for local dry runs.',
+          questions: [
+            {
+              predefinedQuestionId: 1,
+              question: 'Mock question?',
+              answer: 'Mock answer. <InTextCitation fileName="mock.pdf"></InTextCitation>',
+              riskStatus: 'UNSURE',
+            },
+          ],
+        },
+      }));
       return;
     }
 
