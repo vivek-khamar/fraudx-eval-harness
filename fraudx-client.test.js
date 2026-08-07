@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, findDocumentByJobId, waitForDocumentUpload } = require('./fraudx-client');
+const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing } = require('./fraudx-client');
 
 function withFetchMock(t, impl) {
   const original = global.fetch;
@@ -288,5 +288,64 @@ test('waitForDocumentUpload polls until Completed, throws on error, throws on po
   await assert.rejects(
     () => waitForDocumentUpload('https://fake.fraudx.test', 31804, 3, { token: 't', orgId: 1, userId: 68 }, 5000, { pollIntervalMs: 1, pollTimeoutMs: 5 }),
     /did not reach Completed status within 5ms/
+  );
+});
+
+test('triggerClaimProcessing extracts response.taskId', async (t) => {
+  withFetchMock(t, async (url, opts) => {
+    assert.equal(url, 'https://fake.fraudx.test/fraudx/api/v1/claims/process');
+    assert.deepEqual(JSON.parse(opts.body), { bucketId: 31804, processingModelId: 9 });
+    return { ok: true, json: async () => ({ response: { status: 'PROCESSING', taskId: 'task-123' } }) };
+  });
+  const taskId = await triggerClaimProcessing('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, 31804, 9, 5000);
+  assert.equal(taskId, 'task-123');
+});
+
+test('triggerClaimProcessing throws when response.taskId is missing', async (t) => {
+  withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: {} }) }));
+  await assert.rejects(
+    () => triggerClaimProcessing('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, 31804, 9, 5000),
+    /did not contain response\.taskId/
+  );
+});
+
+test('getBucketDetails returns the single matching bucket, throws if not exactly one', async (t) => {
+  withFetchMock(t, async (url, opts) => {
+    assert.equal(url, 'https://fake.fraudx.test/fraudx/api/v1/gx-bucket/list-buckets');
+    const body = JSON.parse(opts.body);
+    assert.deepEqual(body.criteria, [{ column: 'bucketId', operator: 'IN', values: ['31804'] }]);
+    return { ok: true, json: async () => ({ response: { content: [{ bucketId: 31804, bucketStatus: 'SUCCESS' }] } }) };
+  });
+  const bucket = await getBucketDetails('https://fake.fraudx.test', 31804, { token: 't', orgId: 1, userId: 68 }, 5000);
+  assert.deepEqual(bucket, { bucketId: 31804, bucketStatus: 'SUCCESS' });
+
+  withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: { content: [] } }) }));
+  await assert.rejects(
+    () => getBucketDetails('https://fake.fraudx.test', 31804, { token: 't', orgId: 1, userId: 68 }, 5000),
+    /Expected exactly one bucket for bucketId 31804, got 0/
+  );
+});
+
+test('waitForClaimProcessing polls until SUCCESS, throws on FAILED, throws on poll timeout', async (t) => {
+  let calls = 0;
+  withFetchMock(t, async () => {
+    calls++;
+    if (calls <= 2) return { ok: true, json: async () => ({ response: { content: [{ bucketId: 1, bucketStatus: 'PROCESSING' }] } }) };
+    return { ok: true, json: async () => ({ response: { content: [{ bucketId: 1, bucketStatus: 'SUCCESS', latestReportId: 'r-1' }] } }) };
+  });
+  const bucket = await waitForClaimProcessing('https://fake.fraudx.test', 1, { token: 't', orgId: 1, userId: 68 }, 5000, { pollIntervalMs: 1, pollTimeoutMs: 5000 });
+  assert.equal(bucket.latestReportId, 'r-1');
+  assert.equal(calls, 3);
+
+  withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: { content: [{ bucketId: 2, bucketStatus: 'FAILED' }] } }) }));
+  await assert.rejects(
+    () => waitForClaimProcessing('https://fake.fraudx.test', 2, { token: 't', orgId: 1, userId: 68 }, 5000, { pollIntervalMs: 1, pollTimeoutMs: 5000 }),
+    /Claim processing for bucket 2 failed \(bucketStatus: FAILED\)/
+  );
+
+  withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: { content: [{ bucketId: 3, bucketStatus: 'PROCESSING' }] } }) }));
+  await assert.rejects(
+    () => waitForClaimProcessing('https://fake.fraudx.test', 3, { token: 't', orgId: 1, userId: 68 }, 5000, { pollIntervalMs: 1, pollTimeoutMs: 5 }),
+    /did not reach SUCCESS within 5ms/
   );
 });

@@ -272,6 +272,102 @@ async function waitForDocumentUpload(base, bucketId, jobId, auth, timeoutMs, { p
   }
 }
 
+async function listGxBuckets(base, auth, requestBody, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(`${base}/fraudx/api/v1/gx-bucket/list-buckets`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Listing gx-buckets timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Listing gx-buckets failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  return body.response;
+}
+
+async function getBucketDetails(base, bucketId, auth, timeoutMs) {
+  const { content } = await listGxBuckets(
+    base,
+    auth,
+    {
+      page: 0,
+      size: 50,
+      sort: [{ column: 'bucketId', sortType: 'DESC' }],
+      criteriaOperator: 'AND',
+      criteria: [{ column: 'bucketId', operator: 'IN', values: [String(bucketId)] }],
+    },
+    timeoutMs
+  );
+  if (content.length !== 1) {
+    throw new Error(`Expected exactly one bucket for bucketId ${bucketId}, got ${content.length}`);
+  }
+  return content[0];
+}
+
+async function triggerClaimProcessing(base, auth, bucketId, processingModelId, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(`${base}/fraudx/api/v1/claims/process`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      body: JSON.stringify({ bucketId, processingModelId }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Triggering claim processing for bucket ${bucketId} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Triggering claim processing for bucket ${bucketId} failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  const taskId = body?.response?.taskId;
+  if (!taskId) {
+    throw new Error(`Trigger-processing response for bucket ${bucketId} did not contain response.taskId`);
+  }
+  return taskId;
+}
+
+async function waitForClaimProcessing(base, bucketId, auth, timeoutMs, { pollIntervalMs, pollTimeoutMs }) {
+  const deadline = Date.now() + pollTimeoutMs;
+  for (;;) {
+    const bucket = await getBucketDetails(base, bucketId, auth, timeoutMs);
+    if (bucket.bucketStatus === 'SUCCESS') {
+      return bucket;
+    }
+    if (bucket.bucketStatus === 'FAILED') {
+      throw new Error(`Claim processing for bucket ${bucketId} failed (bucketStatus: FAILED)`);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Claim processing for bucket ${bucketId} did not reach SUCCESS within ${pollTimeoutMs}ms (last seen bucketStatus: ${bucket.bucketStatus})`
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+}
+
 module.exports = {
   login,
   postDocumentList,
@@ -284,4 +380,8 @@ module.exports = {
   uploadFile,
   findDocumentByJobId,
   waitForDocumentUpload,
+  listGxBuckets,
+  getBucketDetails,
+  triggerClaimProcessing,
+  waitForClaimProcessing,
 };
