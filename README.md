@@ -23,6 +23,9 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   - `javascript` (metric `citation_accuracy`) deterministically checks that every
     answer's citation matches the gold citation's document and page.
   `scripts/score-dashboard.js` blends them `0.6 × rubric + 0.4 × citation`.
+  The `llm-rubric` grading provider is pinned explicitly via `defaultTest.options.provider`
+  in `promptfooconfig.yaml`, so a machine-local `OPENAI_API_KEY` can't silently switch
+  the judge model.
 - **Entity extraction accuracy (`entAcc`) is not implemented yet** — it stays `null`
   in the dashboard output until that scoring is built.
 

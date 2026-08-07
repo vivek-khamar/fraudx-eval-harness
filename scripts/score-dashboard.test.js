@@ -28,3 +28,55 @@ test('scoreDashboard throws a clear error when results.json has no results', () 
   fs.writeFileSync(empty, JSON.stringify({ results: { results: [] } }));
   assert.throws(() => scoreDashboard(empty), /No results found/);
 });
+
+test('scoreDashboard throws a clear error instead of a cryptic TypeError when the eval result errored (no response/gradingResult)', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const errored = path.join(os.tmpdir(), 'errored-results.json');
+  fs.writeFileSync(
+    errored,
+    JSON.stringify({
+      results: {
+        results: [
+          {
+            error: 'Ingestion failed for FX-GOLD-5K-v1: 500 boom',
+          },
+        ],
+      },
+    })
+  );
+  assert.throws(() => scoreDashboard(errored), /Eval result is not scorable/);
+});
+
+test('scoreDashboard throws a clear NaN error when a named score is missing from the results file', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const missingScore = path.join(os.tmpdir(), 'missing-score-results.json');
+  fs.writeFileSync(
+    missingScore,
+    JSON.stringify({
+      results: {
+        results: [
+          {
+            response: {
+              output: {
+                ingestion: { timeMs: 60000 },
+                processing: { timeMs: 300000 },
+                report: { summary: 's', qa: [] },
+              },
+            },
+            gradingResult: {
+              pass: false,
+              score: 0,
+              namedScores: {
+                qa_summary_accuracy: 0.9,
+                // citation_accuracy is missing
+              },
+            },
+          },
+        ],
+      },
+    })
+  );
+  assert.throws(() => scoreDashboard(missingScore), /NaN/);
+});

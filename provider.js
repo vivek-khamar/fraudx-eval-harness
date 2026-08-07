@@ -14,13 +14,23 @@ class FraudXClaimProvider {
     const { claimId } = context.vars;
     const documentPointers = context.vars.documentIds;
     const docIds = documentPointers.documentIds;
+    const timeoutMs = Number(process.env.FRAUDX_HTTP_TIMEOUT_MS || 900000);
 
     const ingestStart = Date.now();
-    const ingestRes = await fetch(`${base}/internal/eval/ingest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ claimId, documentIds: docIds }),
-    });
+    let ingestRes;
+    try {
+      ingestRes = await fetch(`${base}/internal/eval/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claimId, documentIds: docIds }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+        throw new Error(`Ingestion timed out after ${timeoutMs}ms for ${claimId}`);
+      }
+      throw err;
+    }
     if (!ingestRes.ok) {
       throw new Error(`Ingestion failed for ${claimId}: ${ingestRes.status} ${await ingestRes.text()}`);
     }
@@ -28,11 +38,20 @@ class FraudXClaimProvider {
     const ingestionTimeMs = Date.now() - ingestStart;
 
     const processStart = Date.now();
-    const processRes = await fetch(`${base}/internal/eval/process`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ claimId }),
-    });
+    let processRes;
+    try {
+      processRes = await fetch(`${base}/internal/eval/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claimId }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+        throw new Error(`Processing timed out after ${timeoutMs}ms for ${claimId}`);
+      }
+      throw err;
+    }
     if (!processRes.ok) {
       throw new Error(`Processing failed for ${claimId}: ${processRes.status} ${await processRes.text()}`);
     }

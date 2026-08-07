@@ -98,6 +98,70 @@ test('callApi throws a clear error when FRAUDX_TEST_ENDPOINT is not set', async 
   }
 });
 
+test('callApi attaches an AbortSignal timeout to both fetch calls so a hung endpoint cannot block forever', async (t) => {
+  const calls = [];
+  const originalFetch = global.fetch;
+  const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;
+  const originalTimeout = process.env.FRAUDX_HTTP_TIMEOUT_MS;
+  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_HTTP_TIMEOUT_MS = '900000';
+
+  global.fetch = async (url, opts) => {
+    calls.push({ url, signal: opts.signal });
+    if (url.endsWith('/ingest')) return { ok: true, json: async () => ({}) };
+    return { ok: true, json: async () => ({ report: { summary: 's', qa: [] } }) };
+  };
+
+  t.after(() => {
+    global.fetch = originalFetch;
+    process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
+    if (originalTimeout === undefined) {
+      delete process.env.FRAUDX_HTTP_TIMEOUT_MS;
+    } else {
+      process.env.FRAUDX_HTTP_TIMEOUT_MS = originalTimeout;
+    }
+  });
+
+  const provider = new Provider();
+  await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0].signal instanceof AbortSignal, 'ingest fetch must be called with an AbortSignal');
+  assert.ok(calls[1].signal instanceof AbortSignal, 'process fetch must be called with an AbortSignal');
+});
+
+test('callApi throws a clear timeout error when the ingest request aborts due to timeout', async (t) => {
+  const originalFetch = global.fetch;
+  const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;
+  const originalTimeout = process.env.FRAUDX_HTTP_TIMEOUT_MS;
+  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_HTTP_TIMEOUT_MS = '1';
+
+  global.fetch = async (url, opts) => {
+    // Simulate what Node's real fetch does when the AbortSignal fires: reject
+    // with the DOMException the signal carries as its abort reason.
+    await new Promise((resolve, reject) => {
+      opts.signal.addEventListener('abort', () => reject(opts.signal.reason));
+    });
+  };
+
+  t.after(() => {
+    global.fetch = originalFetch;
+    process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
+    if (originalTimeout === undefined) {
+      delete process.env.FRAUDX_HTTP_TIMEOUT_MS;
+    } else {
+      process.env.FRAUDX_HTTP_TIMEOUT_MS = originalTimeout;
+    }
+  });
+
+  const provider = new Provider();
+  await assert.rejects(
+    () => provider.callApi('FX-GOLD-5K-v1', fakeContext()),
+    /Ingestion timed out after 1ms for FX-GOLD-5K-v1/
+  );
+});
+
 test('callApi surfaces a clear error when the ingest endpoint responds with a non-2xx status', async (t) => {
   const originalFetch = global.fetch;
   const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;

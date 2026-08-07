@@ -4,6 +4,10 @@ prompts:
 providers:
   - id: file://provider.js
 
+defaultTest:
+  options:
+    provider: anthropic:messages:claude-sonnet-4-5
+
 tests:
   - vars:
       claimId: "FX-GOLD-5K-v1"
@@ -14,15 +18,15 @@ tests:
         metric: qa_summary_accuracy
         value: >-
           Gold summary: {{expected.summarySynopsis}}
-          Gold Q&A: {{expected.qa}}
+          Gold Q&A: {{expected.qa | dump}}
           Pass only if the report's summary conveys the same key facts with no
           hallucinated content, and every answer matches its gold answer's meaning
           (exact wording not required).
       - type: javascript
         metric: citation_accuracy
         threshold: 0.95
-        value: >-
-          context.vars.expected.qa.filter(e => {
-            const a = output.report.qa.find(x => x.questionId === e.questionId);
+        value: |-
+          return context.vars.expected.qa.filter((e) => {
+            const a = output.report.qa.find((x) => x.questionId === e.questionId);
             return a && a.citation.documentId === e.citation.documentId && a.citation.page === e.citation.page;
-          }).length / context.vars.expected.qa.length
+          }).length / context.vars.expected.qa.length;

@@ -38,3 +38,53 @@ test('config declares the qa_summary_accuracy (llm-rubric) and citation_accuracy
   assert.equal(citation.threshold, 0.95);
   assert.ok(citation.value.includes('context.vars.expected.qa'));
 });
+
+test('qa_summary_accuracy rubric dumps expected.qa as JSON instead of stringifying the object', () => {
+  const rubric = config.tests[0].assert.find((a) => a.metric === 'qa_summary_accuracy');
+  assert.ok(rubric.value.includes('expected.qa | dump'));
+  assert.ok(!rubric.value.includes('{{expected.qa}}'));
+});
+
+test('citation_accuracy javascript assertion actually computes the fraction of matching citations when executed the way promptfoo runs it', () => {
+  const citation = config.tests[0].assert.find((a) => a.metric === 'citation_accuracy');
+  const value = citation.value;
+  // Mirrors promptfoo's assertions/javascript.js: when the rendered value contains a
+  // newline, it is run as a raw function body via `new Function('output', 'context', functionBody)`,
+  // with NO automatic `return` prepended.
+  assert.ok(value.includes('\n'), 'expected the block scalar to preserve newlines, as promptfoo would see it');
+  const fn = new Function('output', 'context', value);
+
+  const claim = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'golden_claim_docs.json'), 'utf8'));
+  const expected = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'golden_claim_expected.json'), 'utf8'));
+
+  const context = { vars: { claimId: claim.claimId, documentIds: claim, expected } };
+
+  const perfectOutput = {
+    report: {
+      qa: expected.qa.map((e) => ({
+        questionId: e.questionId,
+        answer: e.answer,
+        citation: { documentId: e.citation.documentId, page: e.citation.page },
+      })),
+    },
+  };
+  assert.equal(fn(perfectOutput, context), 1);
+
+  const oneWrongOutput = {
+    report: {
+      qa: expected.qa.map((e, i) => ({
+        questionId: e.questionId,
+        answer: e.answer,
+        citation:
+          i === 0
+            ? { documentId: 'doc_9999', page: 999 }
+            : { documentId: e.citation.documentId, page: e.citation.page },
+      })),
+    },
+  };
+  assert.equal(fn(oneWrongOutput, context), 0.5);
+});
+
+test('defaultTest pins the grading provider so a machine-local OPENAI_API_KEY cannot silently switch the judge model', () => {
+  assert.equal(config.defaultTest.options.provider, 'anthropic:messages:claude-sonnet-4-5');
+});
