@@ -6,7 +6,7 @@ document-ingestion + report pipeline and scores it against a human-verified answ
 ## Design
 
 - **The provider is blind to the answer key.** `provider.js` only ever reads
-  `context.vars.claimId` and `context.vars.documentIds`. It never touches
+  `context.vars.claimId` and `context.vars.bucket`. It never touches
   `context.vars.expected`. This is enforced by a unit test in `provider.test.js` —
   if the pipeline's retrieval context could ever see the gold answers, "accuracy"
   would be meaningless.
@@ -24,7 +24,7 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   - `llm-rubric` (metric `qa_summary_accuracy`) grades whether the report's summary
     and answers convey the same meaning as the gold answer key, with no hallucination.
   - `javascript` (metric `citation_accuracy`) deterministically checks that every
-    answer's citation matches the gold citation's document and page.
+    answer's citation matches the gold citation's `fileName`.
   `scripts/score-dashboard.js` blends them `0.6 × rubric + 0.4 × citation`.
   The `llm-rubric` grading provider is pinned explicitly via `defaultTest.options.provider`
   in `promptfooconfig.yaml`, so a machine-local `OPENAI_API_KEY` can't silently switch
@@ -77,7 +77,7 @@ whole pipeline run end to end:
 
 ```bash
 npm run mock-server                        # terminal 1 — leave running
-FRAUDX_TEST_ENDPOINT=http://localhost:4001 npm run eval:full   # terminal 2
+FRAUDX_TEST_ENDPOINT=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock npm run eval:full   # terminal 2
 ```
 
 ## CI
