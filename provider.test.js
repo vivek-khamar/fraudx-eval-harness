@@ -2,181 +2,151 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fraudxClient = require('./fraudx-client');
 const Provider = require('./provider');
+
+function mockFraudxClient(t, overrides) {
+  const originals = {};
+  for (const [name, impl] of Object.entries(overrides)) {
+    originals[name] = fraudxClient[name];
+    fraudxClient[name] = impl;
+  }
+  t.after(() => {
+    for (const name of Object.keys(overrides)) {
+      fraudxClient[name] = originals[name];
+    }
+  });
+}
 
 function fakeContext() {
   return {
     vars: {
       claimId: 'FX-GOLD-5K-v1',
-      documentIds: { claimId: 'FX-GOLD-5K-v1', documentIds: ['doc_0001', 'doc_0002'] },
+      bucket: {
+        claimId: 'FX-GOLD-5K-v1',
+        sourceBucketId: 31662,
+        newClaim: { bucketName: 'x', claimCategoryId: 23, ingestionModelId: 1, processingModelId: 9, tags: [] },
+      },
       expected: { summarySynopsis: 'THE GOLD ANSWER — must never be sent anywhere', qa: [] },
     },
   };
 }
 
-test('callApi calls ingest then process against FRAUDX_TEST_ENDPOINT and returns timing plus the report', async (t) => {
-  const calls = [];
-  const originalFetch = global.fetch;
-  const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
-
-  global.fetch = async (url, opts) => {
-    calls.push({ url, body: JSON.parse(opts.body) });
-    if (url === 'https://fake.fraudx.test/internal/eval/ingest') {
-      return { ok: true, json: async () => ({ indexedDocumentCount: 2 }) };
-    }
-    if (url === 'https://fake.fraudx.test/internal/eval/process') {
-      return {
-        ok: true,
-        json: async () => ({
-          report: {
-            summary: 'a generated summary',
-            qa: [{ questionId: 'q1_diagnosis', answer: 'x', citation: { documentId: 'doc_0112', page: 4 } }],
-          },
-        }),
-      };
-    }
-    throw new Error(`Unexpected URL: ${url}`);
+function happyPathMocks(calls) {
+  return {
+    login: async () => {
+      calls.push('login');
+      return { token: 't', orgId: 1, userId: 68 };
+    },
+    listBucketDocuments: async () => {
+      calls.push('listBucketDocuments');
+      return [{ gxMasterId: 1, fileName: 'a.pdf', extension: 'pdf' }];
+    },
+    createClaim: async () => {
+      calls.push('createClaim');
+      return 999;
+    },
+    requestUploadUrls: async () => {
+      calls.push('requestUploadUrls');
+      return [{ fileName: 'a.pdf', jobId: 1, uploadUrl: 'https://s3.example/put' }];
+    },
+    getDownloadUrl: async () => {
+      calls.push('getDownloadUrl');
+      return 'https://s3.example/get';
+    },
+    downloadFile: async () => {
+      calls.push('downloadFile');
+      return new ArrayBuffer(4);
+    },
+    uploadFile: async () => {
+      calls.push('uploadFile');
+    },
+    waitForDocumentUpload: async () => {
+      calls.push('waitForDocumentUpload');
+      return { status: 'Completed' };
+    },
+    triggerClaimProcessing: async () => {
+      calls.push('triggerClaimProcessing');
+      return 'task-1';
+    },
+    waitForClaimProcessing: async () => {
+      calls.push('waitForClaimProcessing');
+      return { bucketStatus: 'SUCCESS', latestReportId: 'report-1' };
+    },
+    fetchReport: async () => {
+      calls.push('fetchReport');
+      return { reportId: 'report-1', summary: 's', questions: [] };
+    },
   };
+}
 
+test('callApi orchestrates the full sequence in order and returns the report', async (t) => {
+  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
   t.after(() => {
-    global.fetch = originalFetch;
-    process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
+    delete process.env.FRAUDX_TEST_ENDPOINT;
   });
+  const calls = [];
+  mockFraudxClient(t, happyPathMocks(calls));
 
   const provider = new Provider();
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].url, 'https://fake.fraudx.test/internal/eval/ingest');
-  assert.deepEqual(calls[0].body, { claimId: 'FX-GOLD-5K-v1', documentIds: ['doc_0001', 'doc_0002'] });
-  assert.equal(calls[1].url, 'https://fake.fraudx.test/internal/eval/process');
-  assert.deepEqual(calls[1].body, { claimId: 'FX-GOLD-5K-v1' });
-
+  assert.deepEqual(calls, [
+    'login',
+    'listBucketDocuments',
+    'createClaim',
+    'requestUploadUrls',
+    'getDownloadUrl',
+    'downloadFile',
+    'uploadFile',
+    'waitForDocumentUpload',
+    'triggerClaimProcessing',
+    'waitForClaimProcessing',
+    'fetchReport',
+  ]);
   assert.equal(typeof result.output.ingestion.timeMs, 'number');
-  assert.equal(typeof result.output.processing.timeMs, 'number');
-  assert.equal(result.output.report.summary, 'a generated summary');
-  assert.equal(result.output.report.qa[0].questionId, 'q1_diagnosis');
+  assert.equal(result.output.ingestion.timeMs, result.output.processing.timeMs, 'ingestion and processing must report the same collapsed measurement');
+  assert.deepEqual(result.output.report, { reportId: 'report-1', summary: 's', questions: [] });
 });
 
 test('callApi never reads or transmits context.vars.expected', async (t) => {
-  const originalFetch = global.fetch;
-  const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;
   process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
-
-  const sentBodies = [];
-  global.fetch = async (url, opts) => {
-    sentBodies.push(opts.body);
-    if (url.endsWith('/ingest')) return { ok: true, json: async () => ({}) };
-    return { ok: true, json: async () => ({ report: { summary: 's', qa: [] } }) };
-  };
-
   t.after(() => {
-    global.fetch = originalFetch;
-    process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
+    delete process.env.FRAUDX_TEST_ENDPOINT;
+  });
+  const seenArgs = [];
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    createClaim: async (...args) => {
+      seenArgs.push(JSON.stringify(args));
+      return 999;
+    },
   });
 
   const provider = new Provider();
   await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
-  for (const body of sentBodies) {
-    assert.ok(!body.includes('THE GOLD ANSWER'), 'the answer key must never be sent to the pipeline');
+  for (const arg of seenArgs) {
+    assert.ok(!arg.includes('THE GOLD ANSWER'), 'the answer key must never be passed to fraudx-client.js calls');
   }
 });
 
 test('callApi throws a clear error when FRAUDX_TEST_ENDPOINT is not set', async () => {
-  const original = process.env.FRAUDX_TEST_ENDPOINT;
   delete process.env.FRAUDX_TEST_ENDPOINT;
-  try {
-    const provider = new Provider();
-    await assert.rejects(
-      () => provider.callApi('FX-GOLD-5K-v1', fakeContext()),
-      /FRAUDX_TEST_ENDPOINT is not set/
-    );
-  } finally {
-    process.env.FRAUDX_TEST_ENDPOINT = original;
-  }
+  const provider = new Provider();
+  await assert.rejects(() => provider.callApi('x', fakeContext()), /FRAUDX_TEST_ENDPOINT is not set/);
 });
 
-test('callApi attaches an AbortSignal timeout to both fetch calls so a hung endpoint cannot block forever', async (t) => {
-  const calls = [];
-  const originalFetch = global.fetch;
-  const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;
-  const originalTimeout = process.env.FRAUDX_HTTP_TIMEOUT_MS;
+test('callApi throws when no upload URL matches a source document\'s fileName', async (t) => {
   process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
-  process.env.FRAUDX_HTTP_TIMEOUT_MS = '900000';
-
-  global.fetch = async (url, opts) => {
-    calls.push({ url, signal: opts.signal });
-    if (url.endsWith('/ingest')) return { ok: true, json: async () => ({}) };
-    return { ok: true, json: async () => ({ report: { summary: 's', qa: [] } }) };
-  };
-
   t.after(() => {
-    global.fetch = originalFetch;
-    process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
-    if (originalTimeout === undefined) {
-      delete process.env.FRAUDX_HTTP_TIMEOUT_MS;
-    } else {
-      process.env.FRAUDX_HTTP_TIMEOUT_MS = originalTimeout;
-    }
+    delete process.env.FRAUDX_TEST_ENDPOINT;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    requestUploadUrls: async () => [{ fileName: 'different-name.pdf', jobId: 1, uploadUrl: 'https://s3.example/put' }],
   });
 
   const provider = new Provider();
-  await provider.callApi('FX-GOLD-5K-v1', fakeContext());
-
-  assert.equal(calls.length, 2);
-  assert.ok(calls[0].signal instanceof AbortSignal, 'ingest fetch must be called with an AbortSignal');
-  assert.ok(calls[1].signal instanceof AbortSignal, 'process fetch must be called with an AbortSignal');
-});
-
-test('callApi throws a clear timeout error when the ingest request aborts due to timeout', async (t) => {
-  const originalFetch = global.fetch;
-  const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;
-  const originalTimeout = process.env.FRAUDX_HTTP_TIMEOUT_MS;
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
-  process.env.FRAUDX_HTTP_TIMEOUT_MS = '1';
-
-  global.fetch = async (url, opts) => {
-    // Simulate what Node's real fetch does when the AbortSignal fires: reject
-    // with the DOMException the signal carries as its abort reason.
-    await new Promise((resolve, reject) => {
-      opts.signal.addEventListener('abort', () => reject(opts.signal.reason));
-    });
-  };
-
-  t.after(() => {
-    global.fetch = originalFetch;
-    process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
-    if (originalTimeout === undefined) {
-      delete process.env.FRAUDX_HTTP_TIMEOUT_MS;
-    } else {
-      process.env.FRAUDX_HTTP_TIMEOUT_MS = originalTimeout;
-    }
-  });
-
-  const provider = new Provider();
-  await assert.rejects(
-    () => provider.callApi('FX-GOLD-5K-v1', fakeContext()),
-    /Ingestion timed out after 1ms for FX-GOLD-5K-v1/
-  );
-});
-
-test('callApi surfaces a clear error when the ingest endpoint responds with a non-2xx status', async (t) => {
-  const originalFetch = global.fetch;
-  const originalEndpoint = process.env.FRAUDX_TEST_ENDPOINT;
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
-
-  global.fetch = async () => ({ ok: false, status: 500, text: async () => 'boom' });
-
-  t.after(() => {
-    global.fetch = originalFetch;
-    process.env.FRAUDX_TEST_ENDPOINT = originalEndpoint;
-  });
-
-  const provider = new Provider();
-  await assert.rejects(
-    () => provider.callApi('FX-GOLD-5K-v1', fakeContext()),
-    /Ingestion failed for FX-GOLD-5K-v1: 500 boom/
-  );
+  await assert.rejects(() => provider.callApi('FX-GOLD-5K-v1', fakeContext()), /No upload URL returned for file "a\.pdf"/);
 });
