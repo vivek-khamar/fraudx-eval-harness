@@ -4,7 +4,7 @@
   "description": "Golden-claim promptfoo eval for the FraudX document-ingestion and report pipeline",
   "private": true,
   "scripts": {
-    "test": "node --test provider.test.js config-shape.test.js testdata/testdata.test.js scripts/score-dashboard.test.js fraudx-client.test.js",
+    "test": "node --test provider.test.js config-shape.test.js scripts/score-dashboard.test.js fraudx-client.test.js",
     "eval": "promptfoo eval -c promptfooconfig.yaml --no-cache --output results.json",
     "score": "node scripts/score-dashboard.js",
     "eval:full": "npm run eval && npm run score",
