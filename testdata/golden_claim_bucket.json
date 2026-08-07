@@ -1,0 +1,14 @@
+{
+  "claimId": "FX-GOLD-5K-v1",
+  "sourceBucketId": 31662,
+  "newClaim": {
+    "bucketName": "promptfoo-golden-claim-eval",
+    "claimCategoryId": 23,
+    "ingestionModelId": 1,
+    "processingModelId": 9,
+    "tags": [
+      { "tagId": 3, "tagValueId": 17 },
+      { "tagId": 5, "tagValueId": 13 }
+    ]
+  }
+}

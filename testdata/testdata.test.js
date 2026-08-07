@@ -5,43 +5,44 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const docs = JSON.parse(fs.readFileSync(path.join(__dirname, 'golden_claim_docs.json'), 'utf8'));
+const bucket = JSON.parse(fs.readFileSync(path.join(__dirname, 'golden_claim_bucket.json'), 'utf8'));
 const expected = JSON.parse(fs.readFileSync(path.join(__dirname, 'golden_claim_expected.json'), 'utf8'));
 
-test('golden_claim_docs.json has a claimId and a non-empty array of document pointers', () => {
-  assert.equal(typeof docs.claimId, 'string');
-  assert.ok(docs.claimId.length > 0);
-  assert.ok(Array.isArray(docs.documentIds));
-  assert.ok(docs.documentIds.length > 0);
-  for (const id of docs.documentIds) {
-    assert.equal(typeof id, 'string');
+test('golden_claim_bucket.json has a claimId, a sourceBucketId, and a newClaim config', () => {
+  assert.equal(typeof bucket.claimId, 'string');
+  assert.ok(bucket.claimId.length > 0);
+  assert.equal(typeof bucket.sourceBucketId, 'number');
+
+  assert.equal(typeof bucket.newClaim.bucketName, 'string');
+  assert.ok(bucket.newClaim.bucketName.length > 0);
+  assert.equal(typeof bucket.newClaim.claimCategoryId, 'number');
+  assert.equal(typeof bucket.newClaim.ingestionModelId, 'number');
+  assert.equal(typeof bucket.newClaim.processingModelId, 'number');
+  assert.ok(Array.isArray(bucket.newClaim.tags));
+  for (const tag of bucket.newClaim.tags) {
+    assert.equal(typeof tag.tagId, 'number');
+    assert.equal(typeof tag.tagValueId, 'number');
   }
 });
 
-test('golden_claim_expected.json has a summary, a fraud score band, and a QA battery with citations', () => {
+test('golden_claim_expected.json has a summary and exactly 35 predefined-question entries', () => {
   assert.equal(typeof expected.summarySynopsis, 'string');
   assert.ok(expected.summarySynopsis.length > 0);
 
-  assert.equal(typeof expected.fraudScoreBand.min, 'number');
-  assert.equal(typeof expected.fraudScoreBand.max, 'number');
-  assert.ok(expected.fraudScoreBand.min <= expected.fraudScoreBand.max);
-
   assert.ok(Array.isArray(expected.qa));
-  assert.ok(expected.qa.length > 0);
-  for (const entry of expected.qa) {
-    assert.equal(typeof entry.questionId, 'string');
-    assert.equal(typeof entry.answer, 'string');
-    assert.equal(typeof entry.citation.documentId, 'string');
-    assert.equal(typeof entry.citation.page, 'number');
-  }
-});
+  assert.equal(expected.qa.length, 35, 'golden_claim_expected.json must have one entry per predefined question in claim category 23 — see the report-fetch design doc');
 
-test('every citation in the expected QA battery points at a document that was actually ingested', () => {
-  const ingestedIds = new Set(docs.documentIds);
+  const seenIds = new Set();
   for (const entry of expected.qa) {
-    assert.ok(
-      ingestedIds.has(entry.citation.documentId),
-      `citation for ${entry.questionId} points at ${entry.citation.documentId}, which is not in golden_claim_docs.json`
-    );
+    assert.equal(typeof entry.predefinedQuestionId, 'number');
+    assert.ok(!seenIds.has(entry.predefinedQuestionId), `duplicate predefinedQuestionId ${entry.predefinedQuestionId}`);
+    seenIds.add(entry.predefinedQuestionId);
+    assert.equal(typeof entry.question, 'string');
+    assert.equal(typeof entry.expectedAnswerSummary, 'string');
+    assert.equal(typeof entry.expectedRiskStatus, 'string');
+    assert.ok(Array.isArray(entry.expectedCitationFileNames));
+    for (const fileName of entry.expectedCitationFileNames) {
+      assert.equal(typeof fileName, 'string');
+    }
   }
 });
