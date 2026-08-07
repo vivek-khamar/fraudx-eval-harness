@@ -368,6 +368,34 @@ async function waitForClaimProcessing(base, bucketId, auth, timeoutMs, { pollInt
   }
 }
 
+async function fetchReport(base, reportId, auth, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(`${base}/fraudx/api/v1/dashboard/reports/${reportId}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Fetching report ${reportId} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Fetching report ${reportId} failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  if (!body?.response) {
+    throw new Error(`Report response for ${reportId} did not contain response`);
+  }
+  return body.response;
+}
+
 module.exports = {
   login,
   postDocumentList,
@@ -384,4 +412,5 @@ module.exports = {
   getBucketDetails,
   triggerClaimProcessing,
   waitForClaimProcessing,
+  fetchReport,
 };

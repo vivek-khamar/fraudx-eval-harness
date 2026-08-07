@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing } = require('./fraudx-client');
+const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing, fetchReport } = require('./fraudx-client');
 
 function withFetchMock(t, impl) {
   const original = global.fetch;
@@ -347,5 +347,28 @@ test('waitForClaimProcessing polls until SUCCESS, throws on FAILED, throws on po
   await assert.rejects(
     () => waitForClaimProcessing('https://fake.fraudx.test', 3, { token: 't', orgId: 1, userId: 68 }, 5000, { pollIntervalMs: 1, pollTimeoutMs: 5 }),
     /did not reach SUCCESS within 5ms/
+  );
+});
+
+test('fetchReport returns response.response, throws when missing, throws on non-2xx', async (t) => {
+  withFetchMock(t, async (url, opts) => {
+    assert.equal(url, 'https://fake.fraudx.test/fraudx/api/v1/dashboard/reports/report-abc');
+    assert.equal(opts.method, 'GET');
+    assert.equal(opts.headers.Authorization, 'Bearer t');
+    return { ok: true, json: async () => ({ response: { reportId: 'report-abc', summary: 'x', questions: [] } }) };
+  });
+  const report = await fetchReport('https://fake.fraudx.test', 'report-abc', { token: 't', orgId: 1, userId: 68 }, 5000);
+  assert.equal(report.reportId, 'report-abc');
+
+  withFetchMock(t, async () => ({ ok: true, json: async () => ({}) }));
+  await assert.rejects(
+    () => fetchReport('https://fake.fraudx.test', 'report-abc', { token: 't', orgId: 1, userId: 68 }, 5000),
+    /did not contain response/
+  );
+
+  withFetchMock(t, async () => ({ ok: false, status: 404, text: async () => 'not found' }));
+  await assert.rejects(
+    () => fetchReport('https://fake.fraudx.test', 'report-abc', { token: 't', orgId: 1, userId: 68 }, 5000),
+    /Fetching report report-abc failed: 404 not found/
   );
 });
