@@ -26,7 +26,7 @@ defaultTest:
           let match;
           while ((match = tagRegex.exec(answerText)) !== null) {
             const fileNameMatch = /fileName="([^"]*)"/.exec(match[1]);
-            if (fileNameMatch) fileNames.push(fileNameMatch[1]);
+            if (fileNameMatch) fileNames.push(decodeURIComponent(fileNameMatch[1]));
           }
           return fileNames;
         }

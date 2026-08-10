@@ -120,3 +120,21 @@ test('citation_accuracy assertion, executed the way promptfoo runs it, computes 
   const result = fn(output, { vars: { expected: { qa: expectedQa } } });
   assert.equal(result, 0.5); // 1 of 2 citation-bearing questions matched; question 3 excluded (no citation expected)
 });
+
+test('citation_accuracy assertion decodes URL-encoded fileName attributes before comparing', () => {
+  // The real FraudX report embeds fileName as a URL-encoded attribute, e.g.
+  // fileName="JOSE%2BBRIONES%2BWC%2BFILE%2BCOMPLETE_part10.pdf" for the real
+  // document named "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf". expectedCitationFileNames
+  // is authored in decoded, human-readable form — the assertion must decode to match.
+  const citation = config.defaultTest.assert.find((a) => a.metric === 'citation_accuracy');
+  const fn = new Function('output', 'context', citation.value);
+
+  const expectedQa = [{ predefinedQuestionId: 1, expectedCitationFileNames: ['JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf'] }];
+  const output = {
+    report: {
+      questions: [{ predefinedQuestionId: 1, answer: 'x <InTextCitation fileName="JOSE%2BBRIONES%2BWC%2BFILE%2BCOMPLETE_part10.pdf"></InTextCitation>' }],
+    },
+  };
+  const result = fn(output, { vars: { expected: { qa: expectedQa } } });
+  assert.equal(result, 1);
+});
