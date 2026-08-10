@@ -86,6 +86,15 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && req.url === '/document-processor/api/documents/v2/jobs/trigger-processing') {
+      res.writeHead(202);
+      res.end(JSON.stringify({
+        displayMessage: 'Processing started and jobs have been re-queued for execution.',
+        response: { jobIds: parsedBody.jobIds, processingJobIds: [] },
+      }));
+      return;
+    }
+
     if (req.method === 'POST' && req.url === '/fraudx/api/v1/claims/process') {
       res.writeHead(200);
       res.end(JSON.stringify({ response: { status: 'PROCESSING', taskId: 'mock-task-id' } }));

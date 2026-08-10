@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing, fetchReport } = require('./fraudx-client');
+const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, triggerJobProcessing, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing, fetchReport } = require('./fraudx-client');
 
 function withFetchMock(t, impl) {
   const original = global.fetch;
@@ -240,6 +240,51 @@ test('uploadFile PUTs with the correct Content-Type and body, throws on non-2xx'
   await assert.rejects(() => uploadFile('https://s3.example/bad', bytes, 'application/pdf', 5000), /Uploading file failed: 500 boom/);
 });
 
+test('triggerJobProcessing posts jobIds and returns response.jobIds', async (t) => {
+  withFetchMock(t, async (url, opts) => {
+    assert.equal(url, 'https://fake.fraudx.test/document-processor/api/documents/v2/jobs/trigger-processing');
+    assert.deepEqual(JSON.parse(opts.body), { jobIds: [13861] });
+    return {
+      ok: true,
+      json: async () => ({
+        displayMessage: 'Processing started and jobs have been re-queued for execution.',
+        response: { jobIds: [13861], processingJobIds: [] },
+        statusCode: 202,
+      }),
+    };
+  });
+  const jobIds = await triggerJobProcessing('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, [13861], 5000);
+  assert.deepEqual(jobIds, [13861]);
+});
+
+test('triggerJobProcessing throws when response.jobIds is missing', async (t) => {
+  withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: {} }) }));
+  await assert.rejects(
+    () => triggerJobProcessing('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, [13861], 5000),
+    /did not contain response\.jobIds/
+  );
+});
+
+test('triggerJobProcessing throws a clear error on non-2xx', async (t) => {
+  withFetchMock(t, async () => ({ ok: false, status: 500, text: async () => 'boom' }));
+  await assert.rejects(
+    () => triggerJobProcessing('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, [13861], 5000),
+    /Triggering job processing for jobIds \[13861\] failed: 500 boom/
+  );
+});
+
+test('triggerJobProcessing throws a clear timeout error', async (t) => {
+  withFetchMock(t, async () => {
+    const err = new Error('aborted');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+  await assert.rejects(
+    () => triggerJobProcessing('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, [13861], 5000),
+    /Triggering job processing for jobIds \[13861\] timed out after 5000ms/
+  );
+});
+
 test('findDocumentByJobId returns the single match, null if none, throws if more than one', async (t) => {
   let callCount = 0;
   withFetchMock(t, async (url, opts) => {
@@ -287,8 +332,24 @@ test('waitForDocumentUpload polls until Completed, throws on error, throws on po
   withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: { content: [{ jobId: 3, status: 'Processing', error: null }], page: {} } }) }));
   await assert.rejects(
     () => waitForDocumentUpload('https://fake.fraudx.test', 31804, 3, { token: 't', orgId: 1, userId: 68 }, 5000, { pollIntervalMs: 1, pollTimeoutMs: 5 }),
-    /did not reach Completed status within 5ms/
+    /did not reach Completed\/Skipped status within 5ms/
   );
+});
+
+test('waitForDocumentUpload treats Skipped as success (skipGxProcess:true uploads never reach Completed)', async (t) => {
+  withFetchMock(t, async () => ({
+    ok: true,
+    json: async () => ({ response: { content: [{ jobId: 4, status: 'Skipped', error: null }], page: {} } }),
+  }));
+  const doc = await waitForDocumentUpload(
+    'https://fake.fraudx.test',
+    31804,
+    4,
+    { token: 't', orgId: 1, userId: 68 },
+    5000,
+    { pollIntervalMs: 1, pollTimeoutMs: 5000 }
+  );
+  assert.equal(doc.status, 'Skipped');
 });
 
 test('triggerClaimProcessing extracts response.taskId', async (t) => {

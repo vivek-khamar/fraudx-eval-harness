@@ -61,6 +61,10 @@ function happyPathMocks(calls) {
     uploadFile: async () => {
       calls.push('uploadFile');
     },
+    triggerJobProcessing: async () => {
+      calls.push('triggerJobProcessing');
+      return [1];
+    },
     waitForDocumentUpload: async () => {
       calls.push('waitForDocumentUpload');
       return { status: 'Completed' };
@@ -99,6 +103,7 @@ test('callApi orchestrates the full sequence in order and returns the report', a
     'getDownloadUrl',
     'downloadFile',
     'uploadFile',
+    'triggerJobProcessing',
     'waitForDocumentUpload',
     'triggerClaimProcessing',
     'waitForClaimProcessing',

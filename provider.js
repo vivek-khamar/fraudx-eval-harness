@@ -49,6 +49,7 @@ class FraudXClaimProvider {
       }
       const contentType = fraudxClient.contentTypeForExtension(doc.extension);
       await fraudxClient.uploadFile(upload.uploadUrl, bytes, contentType, timeoutMs);
+      await fraudxClient.triggerJobProcessing(base, auth, [upload.jobId], timeoutMs);
       await fraudxClient.waitForDocumentUpload(base, newBucketId, upload.jobId, auth, timeoutMs, uploadPollConfig);
     }
 

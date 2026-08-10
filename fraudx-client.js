@@ -239,6 +239,37 @@ async function uploadFile(uploadUrl, bytes, contentType, timeoutMs) {
   }
 }
 
+async function triggerJobProcessing(base, auth, jobIds, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(`${base}/document-processor/api/documents/v2/jobs/trigger-processing`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      body: JSON.stringify({ jobIds }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Triggering job processing for jobIds [${jobIds}] timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Triggering job processing for jobIds [${jobIds}] failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  const returnedJobIds = body?.response?.jobIds;
+  if (!returnedJobIds) {
+    throw new Error(`Trigger-job-processing response for jobIds [${jobIds}] did not contain response.jobIds`);
+  }
+  return returnedJobIds;
+}
+
 async function findDocumentByJobId(base, bucketId, jobId, auth, timeoutMs) {
   const { content } = await postDocumentList(
     base,
@@ -260,12 +291,12 @@ async function waitForDocumentUpload(base, bucketId, jobId, auth, timeoutMs, { p
     if (doc?.error) {
       throw new Error(`Upload for jobId ${jobId} in bucket ${bucketId} failed: ${doc.error}`);
     }
-    if (doc?.status === 'Completed') {
+    if (doc?.status === 'Completed' || doc?.status === 'Skipped') {
       return doc;
     }
     if (Date.now() >= deadline) {
       throw new Error(
-        `Upload for jobId ${jobId} in bucket ${bucketId} did not reach Completed status within ${pollTimeoutMs}ms (last seen status: ${doc ? doc.status : 'not found yet'})`
+        `Upload for jobId ${jobId} in bucket ${bucketId} did not reach Completed/Skipped status within ${pollTimeoutMs}ms (last seen status: ${doc ? doc.status : 'not found yet'})`
       );
     }
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -406,6 +437,7 @@ module.exports = {
   createClaim,
   requestUploadUrls,
   uploadFile,
+  triggerJobProcessing,
   findDocumentByJobId,
   waitForDocumentUpload,
   listGxBuckets,
