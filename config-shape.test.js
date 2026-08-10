@@ -28,10 +28,8 @@ test('config declares one test case wired to the golden claim bucket fixture', (
   assert.ok(typeof testCase.vars.expected === 'object' && testCase.vars.expected !== null, 'vars.expected must be an inline object, not a file:// reference');
 });
 
-test('vars.bucket has a claimId, a sourceBucketId, and a newClaim config', () => {
+test('vars.bucket has a sourceBucketId and a newClaim config', () => {
   const bucket = config.tests[0].vars.bucket;
-  assert.equal(typeof bucket.claimId, 'string');
-  assert.ok(bucket.claimId.length > 0);
   assert.equal(typeof bucket.sourceBucketId, 'number');
 
   assert.equal(typeof bucket.newClaim.bucketName, 'string');

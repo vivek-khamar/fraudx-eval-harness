@@ -12,7 +12,6 @@ tests:
   - vars:
       claimId: "FX-GOLD-5K-v1"
       bucket: {
-          "claimId": "FX-GOLD-5K-v1",
           "sourceBucketId": 31662,
           "newClaim": {
             "bucketName": "promptfoo-golden-claim-eval",
