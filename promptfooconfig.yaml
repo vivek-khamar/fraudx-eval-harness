@@ -42,6 +42,6 @@ defaultTest:
         }).length;
         return matchCount / expectedWithCitations.length;
 
-# Test cases (input values per golden claim) live in tests.vars.yaml — add a new
-# claim there without touching this file. See tests.vars.yaml's header comment.
+# Test cases are generated from testdata/claims.json (see scripts/generate-tests-vars.js)
+# into tests.vars.yaml — add a new golden claim there, not here or in tests.vars.yaml directly.
 tests: file://tests.vars.yaml
