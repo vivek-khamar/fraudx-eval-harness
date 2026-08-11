@@ -83,6 +83,11 @@ npm run eval
 ]
 ```
 
+If a claim's provider call errored (e.g. a platform outage, a bad model ID for the current
+environment) or its accuracy score came out `NaN`, that claim's entry has an `error` field
+instead of the four numbers — it does not stop the other claims in the same run from being
+scored.
+
 `ingestTime` and `claimProcTime` are raw seconds (ingestion phase alone, and report-generation phase alone, respectively) — not scores or percentages.
 
 ## Running the unit tests

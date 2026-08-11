@@ -114,7 +114,7 @@ test('scoreDashboard throws a clear error when results.json has no results', () 
   assert.throws(() => scoreDashboard(empty), /No results found/);
 });
 
-test('scoreDashboard throws a clear error instead of a cryptic TypeError when the eval result errored (no response/gradingResult)', () => {
+test('scoreDashboard reports a claim whose eval result errored (no response/gradingResult) as an error entry, not a thrown exception', () => {
   const fs = require('node:fs');
   const os = require('node:os');
   const errored = path.join(os.tmpdir(), 'errored-results.json');
@@ -124,16 +124,21 @@ test('scoreDashboard throws a clear error instead of a cryptic TypeError when th
       results: {
         results: [
           {
+            vars: { claimId: 'FX-GOLD-5K-v1' },
             error: 'Ingestion failed for FX-GOLD-5K-v1: 500 boom',
           },
         ],
       },
     })
   );
-  assert.throws(() => scoreDashboard(errored), /Eval result is not scorable/);
+  const dashboards = scoreDashboard(errored);
+  assert.equal(dashboards.length, 1);
+  assert.equal(dashboards[0].claimId, 'FX-GOLD-5K-v1');
+  assert.match(dashboards[0].error, /500 boom/);
+  assert.equal(dashboards[0].ingestTime, undefined);
 });
 
-test('scoreDashboard throws a clear NaN error when a named score is missing from the results file', () => {
+test('scoreDashboard reports a claim with a NaN accuracy score (missing named score) as an error entry, not a thrown exception', () => {
   const fs = require('node:fs');
   const os = require('node:os');
   const missingScore = path.join(os.tmpdir(), 'missing-score-results.json');
@@ -143,6 +148,7 @@ test('scoreDashboard throws a clear NaN error when a named score is missing from
       results: {
         results: [
           {
+            vars: { claimId: 'FX-GOLD-5K-v1' },
             response: {
               output: {
                 ingestion: { timeMs: 60000 },
@@ -163,5 +169,47 @@ test('scoreDashboard throws a clear NaN error when a named score is missing from
       },
     })
   );
-  assert.throws(() => scoreDashboard(missingScore), /NaN/);
+  const dashboards = scoreDashboard(missingScore);
+  assert.equal(dashboards.length, 1);
+  assert.equal(dashboards[0].claimId, 'FX-GOLD-5K-v1');
+  assert.match(dashboards[0].error, /NaN/);
+});
+
+test('scoreDashboard scores a healthy claim even when another claim in the same file errored', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const mixed = path.join(os.tmpdir(), 'mixed-results.json');
+  fs.writeFileSync(
+    mixed,
+    JSON.stringify({
+      results: {
+        results: [
+          {
+            vars: { claimId: 'FX-GOLD-5K-v1' },
+            error: 'Creating a claim failed: 404 INGESTION model is not found.',
+          },
+          {
+            vars: { claimId: 'FX-GOLD-G3128974-v1' },
+            response: {
+              output: {
+                ingestion: { timeMs: 30000 },
+                processing: { timeMs: 120000 },
+                report: { summary: 's', qa: [] },
+              },
+            },
+            gradingResult: { pass: true, score: 1, namedScores: { qa_match: 0.4, report_quality: 0.5 } },
+          },
+        ],
+      },
+    })
+  );
+
+  const dashboards = scoreDashboard(mixed);
+
+  assert.equal(dashboards.length, 2);
+  assert.equal(dashboards[0].claimId, 'FX-GOLD-5K-v1');
+  assert.match(dashboards[0].error, /INGESTION model is not found/);
+  assert.equal(dashboards[1].claimId, 'FX-GOLD-G3128974-v1');
+  assert.equal(dashboards[1].error, undefined);
+  assert.equal(dashboards[1].acc, 45);
 });

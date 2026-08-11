@@ -16,7 +16,7 @@ function scoreDashboard(resultsFilePath) {
   return results.map((result) => {
     const claimId = result.vars?.claimId;
     if (result.error || !result.response?.output || !result.gradingResult?.namedScores) {
-      throw new Error(`Eval result is not scorable (claimId: ${claimId}): ${result.error || 'missing response output or grading result'}`);
+      return { claimId, error: result.error || 'missing response output or grading result' };
     }
 
     const output = result.response.output;
@@ -27,7 +27,7 @@ function scoreDashboard(resultsFilePath) {
 
     const acc = Math.round(50 * namedScores.qa_match + 50 * namedScores.report_quality);
     if (Number.isNaN(acc)) {
-      throw new Error(`Computed accuracy score is NaN (claimId: ${claimId}) — a named score is missing from the results file`);
+      return { claimId, error: 'Computed accuracy score is NaN — a named score is missing from the results file' };
     }
 
     return { claimId, ingestTime, claimProcTime, acc, entAcc: null };
