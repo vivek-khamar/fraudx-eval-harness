@@ -2,6 +2,8 @@
 
 const fraudxClient = require('./fraudx-client');
 
+const DOCUMENT_TEXT_CHAR_LIMIT = 15000;
+
 function extractCitedFileNames(report) {
   const fileNames = new Set();
   const tagRegex = /<InTextCitation\b([^>]*)>/g;
@@ -78,11 +80,25 @@ class FraudXClaimProvider {
 
     const report = await fraudxClient.fetchReport(base, bucket.latestReportId, auth, timeoutMs);
 
+    const citedFileNames = extractCitedFileNames(report);
+    const citedDocumentsText = {};
+    for (const fileName of citedFileNames) {
+      const citedDoc = sourceDocs.find((d) => d.fileName === fileName);
+      if (!citedDoc) {
+        continue; // the real report cited a file we don't recognize — skip, don't fail the run
+      }
+      const citedDownloadUrl = await fraudxClient.getDownloadUrl(base, citedDoc.gxMasterId, auth, timeoutMs);
+      const citedBytes = await fraudxClient.downloadFile(citedDownloadUrl, timeoutMs);
+      const text = await fraudxClient.extractPdfText(citedBytes);
+      citedDocumentsText[fileName] = text.slice(0, DOCUMENT_TEXT_CHAR_LIMIT);
+    }
+
     return {
       output: {
         ingestion: { timeMs: ingestionTimeMs },
         processing: { timeMs: processingTimeMs },
         report,
+        citedDocumentsText,
       },
     };
   }

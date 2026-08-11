@@ -230,3 +230,81 @@ test('callApi throws when no upload URL matches a source document\'s fileName', 
   const provider = new Provider();
   await assert.rejects(() => provider.callApi('FX-GOLD-5K-v1', fakeContext()), /No upload URL returned for file "a\.pdf"/);
 });
+
+test('callApi fetches text only for documents actually cited in the real report, truncated to 15000 chars', async (t) => {
+  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_TEST_ENDPOINT;
+  });
+  const getDownloadUrlCalls = [];
+  // The pre-existing ingestion loop uploads every document in sourceDocs (including uncited.pdf) into
+  // the new claim bucket, which itself calls getDownloadUrl/requestUploadUrls for both documents. Since
+  // requestUploadUrls must be given a per-file response (the happyPathMocks default only knows 'a.pdf'),
+  // and this test's own getDownloadUrl assertion is only about the *new* cited-fetch step (not ingestion),
+  // track calls to getDownloadUrl only from the point the report is fetched onward.
+  let reportFetched = false;
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    listBucketDocuments: async () => [
+      { gxMasterId: 1, fileName: 'a.pdf', extension: 'pdf' },
+      { gxMasterId: 2, fileName: 'uncited.pdf', extension: 'pdf' },
+    ],
+    requestUploadUrls: async (base, auth, files) => [{ fileName: files[0].fileName, jobId: 1, uploadUrl: 'https://s3.example/put' }],
+    fetchReport: async () => {
+      reportFetched = true;
+      return {
+        reportId: 'report-1',
+        summary: 's',
+        questions: [{ predefinedQuestionId: 1, answer: 'see <InTextCitation fileName="a.pdf"></InTextCitation>' }],
+      };
+    },
+    getDownloadUrl: async (base, gxMasterId) => {
+      if (reportFetched) {
+        getDownloadUrlCalls.push(gxMasterId);
+      }
+      return 'https://s3.example/get';
+    },
+    downloadFile: async () => new ArrayBuffer(4),
+    extractPdfText: async () => 'x'.repeat(20000),
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.deepEqual(getDownloadUrlCalls, [1], 'only the cited document (gxMasterId 1) should be downloaded, not the uncited one');
+  assert.equal(result.output.citedDocumentsText['a.pdf'].length, 15000, 'document text must be truncated to the char limit');
+  assert.equal(Object.keys(result.output.citedDocumentsText).length, 1);
+});
+
+test('callApi skips a cited fileName it cannot match to a source document, without failing the run', async (t) => {
+  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_TEST_ENDPOINT;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    fetchReport: async () => ({
+      reportId: 'report-1',
+      summary: 's',
+      questions: [{ predefinedQuestionId: 1, answer: 'see <InTextCitation fileName="unknown.pdf"></InTextCitation>' }],
+    }),
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.deepEqual(result.output.citedDocumentsText, {});
+});
+
+test('callApi returns an empty citedDocumentsText when the report has no citations', async (t) => {
+  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_TEST_ENDPOINT;
+  });
+  mockFraudxClient(t, happyPathMocks([]));
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.deepEqual(result.output.citedDocumentsText, {});
+});
