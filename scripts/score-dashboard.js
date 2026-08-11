@@ -5,7 +5,6 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 
-
 function budgetScore(budgetMs, measuredMs) {
   return Math.round(100 * Math.min(1, budgetMs / measuredMs));
 }
