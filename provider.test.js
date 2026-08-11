@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fraudxClient = require('./fraudx-client');
 const Provider = require('./provider');
+const { extractCitedFileNames } = Provider;
 
 function mockFraudxClient(t, overrides) {
   const originals = {};
@@ -82,6 +83,21 @@ function happyPathMocks(calls) {
     },
   };
 }
+
+test('extractCitedFileNames collects unique, decoded fileNames from every answer\'s citations', () => {
+  const report = {
+    questions: [
+      { answer: 'x <InTextCitation fileName="JOSE%2BBRIONES.pdf"></InTextCitation>' },
+      { answer: 'y <InTextCitation fileName="JOSE%2BBRIONES.pdf"></InTextCitation> and <InTextCitation fileName="other.pdf"></InTextCitation>' },
+      { answer: 'no citations here' },
+    ],
+  };
+  assert.deepEqual(extractCitedFileNames(report), ['JOSE+BRIONES.pdf', 'other.pdf']);
+});
+
+test('extractCitedFileNames returns an empty array when no answers have citations', () => {
+  assert.deepEqual(extractCitedFileNames({ questions: [{ answer: 'no sources found' }] }), []);
+});
 
 test('callApi orchestrates the full sequence in order and returns the report', async (t) => {
   process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';

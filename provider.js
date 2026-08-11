@@ -2,6 +2,21 @@
 
 const fraudxClient = require('./fraudx-client');
 
+function extractCitedFileNames(report) {
+  const fileNames = new Set();
+  const tagRegex = /<InTextCitation\b([^>]*)>/g;
+  for (const q of report.questions) {
+    let match;
+    while ((match = tagRegex.exec(q.answer)) !== null) {
+      const fileNameMatch = /fileName="([^"]*)"/.exec(match[1]);
+      if (fileNameMatch) {
+        fileNames.add(decodeURIComponent(fileNameMatch[1]));
+      }
+    }
+  }
+  return [...fileNames];
+}
+
 class FraudXClaimProvider {
   id() {
     return 'fraudx-claim-provider';
@@ -74,3 +89,4 @@ class FraudXClaimProvider {
 }
 
 module.exports = FraudXClaimProvider;
+module.exports.extractCitedFileNames = extractCitedFileNames;
