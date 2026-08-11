@@ -49,7 +49,7 @@ class FraudXClaimProvider {
 
     const uploadPollConfig = {
       pollIntervalMs: Number(process.env.FRAUDX_UPLOAD_POLL_INTERVAL_MS || 2000),
-      pollTimeoutMs: Number(process.env.FRAUDX_UPLOAD_POLL_TIMEOUT_MS || 600000),
+      pollTimeoutMs: Number(process.env.FRAUDX_UPLOAD_POLL_TIMEOUT_MS || 3600000),
     };
     const ingestionStart = Date.now();
     for (const doc of sourceDocs) {
