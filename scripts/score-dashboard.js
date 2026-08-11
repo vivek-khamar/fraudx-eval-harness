@@ -5,13 +5,7 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 
-function budgetScore(budgetMs, measuredMs) {
-  return Math.round(100 * Math.min(1, budgetMs / measuredMs));
-}
-
 function scoreDashboard(resultsFilePath) {
-  const ingestBudgetMs = Number(process.env.INGEST_BUDGET_MS || 120000);
-  const claimBudgetMs = Number(process.env.CLAIM_BUDGET_MS || 600000);
   const raw = fs.readFileSync(resultsFilePath, 'utf8');
   const parsed = JSON.parse(raw);
   const result = parsed.results.results[0];
@@ -25,8 +19,8 @@ function scoreDashboard(resultsFilePath) {
   const output = result.response.output;
   const namedScores = result.gradingResult.namedScores;
 
-  const ingestTime = budgetScore(ingestBudgetMs, output.ingestion.timeMs);
-  const claimProcTime = budgetScore(claimBudgetMs, output.ingestion.timeMs + output.processing.timeMs);
+  const ingestTime = output.ingestion.timeMs;
+  const claimProcTime = output.processing.timeMs;
 
   const acc = Math.round(50 * namedScores.qa_match + 50 * namedScores.report_quality);
   if (Number.isNaN(acc)) {
@@ -46,4 +40,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { scoreDashboard, budgetScore };
+module.exports = { scoreDashboard };

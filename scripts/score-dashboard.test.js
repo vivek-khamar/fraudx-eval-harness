@@ -3,72 +3,24 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { scoreDashboard, budgetScore } = require('./score-dashboard');
+const { scoreDashboard } = require('./score-dashboard');
 
-test('budgetScore saturates at 100 when at or under budget, and scales down proportionally when over', () => {
-  assert.equal(budgetScore(600000, 600000), 100);
-  assert.equal(budgetScore(600000, 300000), 100);
-  assert.equal(budgetScore(600000, 1200000), 50);
-});
-
-test('scoreDashboard reads results.json and computes all four dashboard numbers', (t) => {
-  const originalIngestBudget = process.env.INGEST_BUDGET_MS;
-  const originalClaimBudget = process.env.CLAIM_BUDGET_MS;
-  delete process.env.INGEST_BUDGET_MS;
-  delete process.env.CLAIM_BUDGET_MS;
-  t.after(() => {
-    if (originalIngestBudget === undefined) {
-      delete process.env.INGEST_BUDGET_MS;
-    } else {
-      process.env.INGEST_BUDGET_MS = originalIngestBudget;
-    }
-    if (originalClaimBudget === undefined) {
-      delete process.env.CLAIM_BUDGET_MS;
-    } else {
-      process.env.CLAIM_BUDGET_MS = originalClaimBudget;
-    }
-  });
-
+test('scoreDashboard reads results.json and computes all four dashboard numbers', () => {
   const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
   const dashboard = scoreDashboard(fixture);
 
-  assert.equal(dashboard.ingestTime, 100);
-  assert.equal(dashboard.claimProcTime, 100);
+  // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported as-is, no budget scoring.
+  assert.equal(dashboard.ingestTime, 60000);
+  assert.equal(dashboard.claimProcTime, 300000);
   // acc = round(50*qa_match + 50*report_quality) = round(50*0.9 + 50*0.85) = round(87.5) = 88
   assert.equal(dashboard.acc, 88);
   assert.equal(dashboard.entAcc, null);
 });
 
-test('scoreDashboard honors INGEST_BUDGET_MS/CLAIM_BUDGET_MS overrides read from process.env', (t) => {
-  const originalIngestBudget = process.env.INGEST_BUDGET_MS;
-  const originalClaimBudget = process.env.CLAIM_BUDGET_MS;
-  process.env.INGEST_BUDGET_MS = '30000';
-  process.env.CLAIM_BUDGET_MS = '100000';
-  t.after(() => {
-    if (originalIngestBudget === undefined) {
-      delete process.env.INGEST_BUDGET_MS;
-    } else {
-      process.env.INGEST_BUDGET_MS = originalIngestBudget;
-    }
-    if (originalClaimBudget === undefined) {
-      delete process.env.CLAIM_BUDGET_MS;
-    } else {
-      process.env.CLAIM_BUDGET_MS = originalClaimBudget;
-    }
-  });
-
-  const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
-  const dashboard = scoreDashboard(fixture);
-
-  // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000.
-  assert.equal(dashboard.ingestTime, budgetScore(30000, 60000)); // 50
-  assert.equal(dashboard.claimProcTime, budgetScore(100000, 60000 + 300000)); // 28
-});
-
-test('scoreDashboard scores claimProcTime against ingestion + processing combined (the end-to-end SLA), not processing alone', () => {
+test('scoreDashboard reports ingestTime and claimProcTime independently, without combining them', () => {
   const fs = require('node:fs');
   const os = require('node:os');
-  const fixturePath = path.join(os.tmpdir(), 'high-ingestion-results.json');
+  const fixturePath = path.join(os.tmpdir(), 'independent-timers-results.json');
   fs.writeFileSync(
     fixturePath,
     JSON.stringify({
@@ -77,8 +29,6 @@ test('scoreDashboard scores claimProcTime against ingestion + processing combine
           {
             response: {
               output: {
-                // processing.timeMs alone (300000) is under the 600000 default budget,
-                // but ingestion.timeMs (400000) + processing.timeMs (300000) = 700000 is over it.
                 ingestion: { timeMs: 400000 },
                 processing: { timeMs: 300000 },
                 report: { summary: 's', qa: [] },
@@ -100,7 +50,8 @@ test('scoreDashboard scores claimProcTime against ingestion + processing combine
 
   const dashboard = scoreDashboard(fixturePath);
 
-  assert.equal(dashboard.claimProcTime, budgetScore(600000, 400000 + 300000));
+  assert.equal(dashboard.ingestTime, 400000);
+  assert.equal(dashboard.claimProcTime, 300000);
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {

@@ -18,8 +18,8 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   the eval forever.
 - **Time never enters a promptfoo assertion.** Ingest time and processing time are
   just fields on the provider's output, already timed by the time promptfoo sees
-  them. `scripts/score-dashboard.js` applies the budget formula
-  `100 × min(1, budget ÷ measured)` to them after the run finishes.
+  them. `scripts/score-dashboard.js` reports them as-is — no budget or percentage
+  math, just the raw millisecond values.
 - **Accuracy is graded inside promptfoo**, via two assertions on the one test case:
   - `qa_match` (deterministic `javascript`) checks that each answer's `riskStatus` exactly matches
     the gold `expectedRiskStatus`, over all 35 questions.
@@ -38,8 +38,7 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   `provider.js` can't match to a real source document, that citation is skipped rather than
   failing the run.
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
-- **`provider.js` times ingestion and report-generation as two independent phases.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop as `ingestion.timeMs`, and separately times `triggerClaimProcessing` + `waitForClaimProcessing` (the report/Q&A generation phase) as `processing.timeMs`.
-- **`claimProcTime` is the end-to-end SLA number, not the report-generation phase alone.** `scripts/score-dashboard.js` scores it against `ingestion.timeMs + processing.timeMs` combined (full ingest → retrieval → report → QA-ready wall-clock), budgeted at 600s by default (`CLAIM_BUDGET_MS`). `ingestTime` is a separate diagnostic score for the ingestion phase alone, budgeted at 120s by default (`INGEST_BUDGET_MS`) — it doesn't feed into `claimProcTime`.
+- **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestTime` and `dashboard.claimProcTime` are just those two raw values, unchanged and uncombined.
 - **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `provider.js`'s `extractCitedFileNames` regex-extracts them (to decide which documents to fetch text for), and `report_quality` checks claims against that fetched text rather than matching on filename alone.
 - **Entity extraction accuracy (`entAcc`) is not implemented yet** — it stays `null`
   in the dashboard output until that scoring is built.
@@ -67,12 +66,14 @@ npm run eval
 
 ```json
 {
-  "ingestTime": 100,
-  "claimProcTime": 92,
+  "ingestTime": 71000,
+  "claimProcTime": 184000,
   "acc": 94,
   "entAcc": null
 }
 ```
+
+`ingestTime` and `claimProcTime` are raw milliseconds (ingestion phase alone, and report-generation phase alone, respectively) — not scores or percentages.
 
 ## Running the unit tests
 
