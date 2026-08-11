@@ -20,36 +20,16 @@ defaultTest:
         }).length;
         return matched / context.vars.expected.qa.length;
     - type: llm-rubric
-      metric: qa_grounding
-      value: >-
-        Gold Q&A with expected citations: {{expected.qa | dump}}
-        The output above includes report.questions (the real answers) and citedDocumentsText
-        (a map of fileName to that document's extracted text). For each gold Q&A entry with a
-        non-empty expectedCitationFileNames, find the matching real answer by predefinedQuestionId,
-        and check whether that answer's claim is actually supported by the text in
-        citedDocumentsText for its cited fileName. Count how many are grounded, out of how many
-        gold entries had an expected citation to check. Your score MUST equal
-        (grounded count / checked count), not a generic confidence value. If no gold entries have
-        an expected citation, your score is 1.
-    - type: llm-rubric
       metric: report_quality
       value: >-
         Gold summary: {{expected.summarySynopsis}}
-        The output above includes report.summary (the real summary). Judge the real summary
-        against the gold summary on: completeness (does it cover the same key facts), clinical
-        correctness, whether anything important from the gold summary is missing, and whether it
-        introduces any hallucinated (unsupported) information. Your score should reflect overall
-        quality across all four criteria as a single 0-1 value.
-    - type: llm-rubric
-      metric: hallucination_consistency
-      value: >-
         The output above includes report.summary (the real summary) and citedDocumentsText (a map
-        of fileName to extracted source-document text). Identify the distinct factual claims made
-        in report.summary. For each, check whether it is supported by the combined text in
-        citedDocumentsText. Count how many claims are factually consistent, out of how many
-        distinct claims you identified. Your score MUST equal (consistent count / total claims
-        identified), not a generic confidence value. If you can't identify any checkable claims in
-        the summary, your score is 1.
+        of fileName to extracted source-document text). Judge the real summary against the gold
+        summary and citedDocumentsText on: completeness (does it cover the same key facts),
+        clinical correctness, whether anything important from the gold summary is missing, and
+        groundedness — whether every factual claim in the summary is actually supported by the
+        combined text in citedDocumentsText, with no hallucinated (unsupported) information. Your
+        score should reflect overall quality across all these criteria as a single 0-1 value.
 
 # Test cases are generated from testdata/claims.json (see scripts/generate-tests-vars.js)
 # into tests.vars.yaml — add a new golden claim there, not here or in tests.vars.yaml directly.

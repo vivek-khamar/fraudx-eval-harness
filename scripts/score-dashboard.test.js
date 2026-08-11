@@ -34,8 +34,8 @@ test('scoreDashboard reads results.json and computes all four dashboard numbers'
 
   assert.equal(dashboard.ingestTime, 100);
   assert.equal(dashboard.claimProcTime, 100);
-  // qaPct = 50*0.9 + 50*0.8 = 85; reportPct = 100*0.85 = 85; base = 0.5*85+0.5*85 = 85; acc = round(85*0.95) = 81
-  assert.equal(dashboard.acc, 81);
+  // acc = round(50*qa_match + 50*report_quality) = round(50*0.9 + 50*0.85) = round(87.5) = 88
+  assert.equal(dashboard.acc, 88);
   assert.equal(dashboard.entAcc, null);
 });
 
@@ -89,9 +89,7 @@ test('scoreDashboard scores claimProcTime against ingestion + processing combine
               score: 1,
               namedScores: {
                 qa_match: 0.9,
-                qa_grounding: 0.8,
                 report_quality: 0.85,
-                hallucination_consistency: 0.95,
               },
             },
           },
@@ -154,9 +152,7 @@ test('scoreDashboard throws a clear NaN error when a named score is missing from
               score: 0,
               namedScores: {
                 qa_match: 0.9,
-                qa_grounding: 0.8,
-                report_quality: 0.85,
-                // hallucination_consistency is missing
+                // report_quality is missing
               },
             },
           },

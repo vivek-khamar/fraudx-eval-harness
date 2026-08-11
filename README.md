@@ -20,31 +20,27 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   just fields on the provider's output, already timed by the time promptfoo sees
   them. `scripts/score-dashboard.js` applies the budget formula
   `100 × min(1, budget ÷ measured)` to them after the run finishes.
-- **Accuracy is graded inside promptfoo**, via four assertions on the one test case:
+- **Accuracy is graded inside promptfoo**, via two assertions on the one test case:
   - `qa_match` (deterministic `javascript`) checks that each answer's `riskStatus` exactly matches
     the gold `expectedRiskStatus`, over all 35 questions.
-  - `qa_grounding` (`llm-rubric`) checks that each citation-bearing answer's claim is actually
-    supported by its cited document's real text (fetched by `provider.js`, never from the answer
-    key — see below).
-  - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary on
-    completeness, clinical correctness, missing information, and hallucination, as a single 0–1
-    score.
-  - `hallucination_consistency` (`llm-rubric`, a "Vectara-style" factual-consistency check) checks
-    each distinct claim in the report summary against the combined text of its cited documents.
-  `scripts/score-dashboard.js` combines them: `qaPct = 0.5×qa_match + 0.5×qa_grounding`,
-  `reportPct = 100×report_quality`, `acc = round((0.5×reportPct + 0.5×qaPct) × hallucination_consistency)`.
+  - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary and
+    `citedDocumentsText` (fetched by `provider.js`, never from the answer key — see below) on
+    completeness, clinical correctness, missing information, and groundedness (whether every claim
+    in the summary is actually supported by the cited source text, with no hallucination) — a
+    single 0–1 score covering all of that.
+  `scripts/score-dashboard.js` combines them: `acc = round(50×qa_match + 50×report_quality)`.
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
 - **`provider.js` fetches the text of every document the real report actually cites** (not the
   whole source bucket, and never based on the gold answer key) and attaches it as
   `output.citedDocumentsText`, capped at 15,000 characters per document — this is what
-  `qa_grounding` and `hallucination_consistency` check answers/claims against. If the report cites
-  a filename `provider.js` can't match to a real source document, that citation is skipped rather
-  than failing the run.
+  `report_quality` checks the summary's claims against. If the report cites a filename
+  `provider.js` can't match to a real source document, that citation is skipped rather than
+  failing the run.
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
 - **`provider.js` times ingestion and report-generation as two independent phases.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop as `ingestion.timeMs`, and separately times `triggerClaimProcessing` + `waitForClaimProcessing` (the report/Q&A generation phase) as `processing.timeMs`.
 - **`claimProcTime` is the end-to-end SLA number, not the report-generation phase alone.** `scripts/score-dashboard.js` scores it against `ingestion.timeMs + processing.timeMs` combined (full ingest → retrieval → report → QA-ready wall-clock), budgeted at 600s by default (`CLAIM_BUDGET_MS`). `ingestTime` is a separate diagnostic score for the ingestion phase alone, budgeted at 120s by default (`INGEST_BUDGET_MS`) — it doesn't feed into `claimProcTime`.
-- **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `provider.js`'s `extractCitedFileNames` regex-extracts them (to decide which documents to fetch text for), and `qa_grounding`/`hallucination_consistency` check claims against that fetched text rather than matching on filename alone.
+- **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `provider.js`'s `extractCitedFileNames` regex-extracts them (to decide which documents to fetch text for), and `report_quality` checks claims against that fetched text rather than matching on filename alone.
 - **Entity extraction accuracy (`entAcc`) is not implemented yet** — it stays `null`
   in the dashboard output until that scoring is built.
 

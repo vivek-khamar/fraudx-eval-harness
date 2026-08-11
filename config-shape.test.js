@@ -79,26 +79,18 @@ test('vars.expected has a summary and exactly 35 predefined-question entries', (
   }
 });
 
-test('config declares exactly four assertions: qa_match, qa_grounding, report_quality, hallucination_consistency', () => {
+test('config declares exactly two assertions: qa_match, report_quality', () => {
   const asserts = config.defaultTest.assert;
   assert.ok(Array.isArray(asserts));
-  assert.equal(asserts.length, 4);
+  assert.equal(asserts.length, 2);
 
   const qaMatch = asserts.find((a) => a.metric === 'qa_match');
   assert.equal(qaMatch.type, 'javascript');
 
-  const qaGrounding = asserts.find((a) => a.metric === 'qa_grounding');
-  assert.equal(qaGrounding.type, 'llm-rubric');
-  assert.ok(qaGrounding.value.includes('{{expected.qa | dump}}'));
-  assert.ok(qaGrounding.value.toLowerCase().includes('score must equal'));
-
   const reportQuality = asserts.find((a) => a.metric === 'report_quality');
   assert.equal(reportQuality.type, 'llm-rubric');
   assert.ok(reportQuality.value.includes('{{expected.summarySynopsis}}'));
-
-  const hallucination = asserts.find((a) => a.metric === 'hallucination_consistency');
-  assert.equal(hallucination.type, 'llm-rubric');
-  assert.ok(hallucination.value.toLowerCase().includes('score must equal'));
+  assert.ok(reportQuality.value.toLowerCase().includes('citeddocumentstext'));
 });
 
 test('qa_match assertion, executed the way promptfoo runs it, computes the fraction of matching risk determinations', () => {

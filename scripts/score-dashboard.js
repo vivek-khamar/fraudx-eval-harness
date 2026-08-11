@@ -28,9 +28,7 @@ function scoreDashboard(resultsFilePath) {
   const ingestTime = budgetScore(ingestBudgetMs, output.ingestion.timeMs);
   const claimProcTime = budgetScore(claimBudgetMs, output.ingestion.timeMs + output.processing.timeMs);
 
-  const qaPct = 50 * namedScores.qa_match + 50 * namedScores.qa_grounding;
-  const reportPct = 100 * namedScores.report_quality;
-  const acc = Math.round((0.5 * reportPct + 0.5 * qaPct) * namedScores.hallucination_consistency);
+  const acc = Math.round(50 * namedScores.qa_match + 50 * namedScores.report_quality);
   if (Number.isNaN(acc)) {
     throw new Error('Computed accuracy score is NaN — a named score is missing from the results file');
   }
