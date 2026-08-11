@@ -1,5 +1,7 @@
 'use strict';
 
+const { PDFParse } = require('pdf-parse');
+
 const EXTENSION_CONTENT_TYPES = {
   pdf: 'application/pdf',
   png: 'image/png',
@@ -33,6 +35,16 @@ function contentTypeForExtension(extension) {
     throw new Error(`No known content type for file extension "${extension}" — add it to EXTENSION_CONTENT_TYPES`);
   }
   return contentType;
+}
+
+async function extractPdfText(bytes) {
+  const parser = new PDFParse({ data: Buffer.from(bytes) });
+  try {
+    const result = await parser.getText();
+    return result.text;
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function login(base, timeoutMs) {
@@ -449,6 +461,7 @@ module.exports = {
   postDocumentList,
   listBucketDocuments,
   contentTypeForExtension,
+  extractPdfText,
   getDownloadUrl,
   downloadFile,
   createClaim,

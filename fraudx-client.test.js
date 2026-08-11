@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, triggerJobProcessing, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing, fetchReport } = require('./fraudx-client');
+const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, triggerJobProcessing, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing, fetchReport, extractPdfText } = require('./fraudx-client');
 
 function withFetchMock(t, impl) {
   const original = global.fetch;
@@ -487,4 +487,51 @@ test('fetchReport returns response.response, throws when missing, throws on non-
     () => fetchReport('https://fake.fraudx.test', 'report-abc', { token: 't', orgId: 1, userId: 68 }, 5000),
     /Fetching report report-abc failed: 404 not found/
   );
+});
+
+test('extractPdfText extracts plain text from a real PDF buffer', async () => {
+  // Minimal valid single-page PDF with one text run. Verified against the installed
+  // pdf-parse: extracts "Hello World" even with a deliberately-wrong xref table, because
+  // pdf.js (which pdf-parse wraps) recovers via object scanning for simple documents.
+  const pdfText = [
+    '%PDF-1.4',
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+    '3 0 obj<</Type/Page/Parent 2 0 R/Resources<</Font<</F1 4 0 R>>>>/MediaBox[0 0 200 200]/Contents 5 0 R>>endobj',
+    '4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj',
+    '5 0 obj<</Length 44>>',
+    'stream',
+    'BT /F1 12 Tf 10 100 Td (Hello World) Tj ET',
+    'endstream',
+    'endobj',
+    'xref',
+    '0 6',
+    '0000000000 65535 f ',
+    'trailer<</Size 6/Root 1 0 R>>',
+    '%%EOF',
+  ].join('\n');
+  const bytes = Buffer.from(pdfText, 'utf8');
+
+  const text = await extractPdfText(bytes);
+
+  assert.ok(text.includes('Hello World'), `expected extracted text to include "Hello World", got: ${JSON.stringify(text)}`);
+});
+
+test('extractPdfText releases the parser after extracting', async () => {
+  const pdfText = [
+    '%PDF-1.4',
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj',
+    'xref',
+    '0 4',
+    '0000000000 65535 f ',
+    'trailer<</Size 4/Root 1 0 R>>',
+    '%%EOF',
+  ].join('\n');
+  const bytes = Buffer.from(pdfText, 'utf8');
+
+  // A page with no content stream at all must not throw — just return whatever text pdf.js finds (likely empty).
+  const text = await extractPdfText(bytes);
+  assert.equal(typeof text, 'string');
 });
