@@ -18,8 +18,9 @@ test('config declares exactly one provider pointing at the local provider.js', (
   assert.equal(config.providers[0].id, 'file://provider.js');
 });
 
-test('config pins the grading provider via defaultTest', () => {
-  assert.equal(config.defaultTest.options.provider, 'anthropic:messages:claude-sonnet-4-5');
+test('config reads the grading provider from GRADER_PROVIDER with no hardcoded default', () => {
+  const provider = config.defaultTest.options.provider;
+  assert.equal(provider, '{{ env.GRADER_PROVIDER }}');
 });
 
 test('config loads test cases from tests.vars.yaml via a whole-file reference, not per-field file:// vars', () => {

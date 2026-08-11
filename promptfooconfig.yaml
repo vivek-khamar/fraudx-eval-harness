@@ -6,7 +6,10 @@ providers:
 
 defaultTest:
   options:
-    provider: anthropic:messages:claude-sonnet-4-5
+    # Read directly from GRADER_PROVIDER in .env (e.g. "openai:chat:gpt-4o" or
+    # "anthropic:messages:claude-sonnet-4-5") — no default. That provider's own API
+    # key must also be set (e.g. OPENAI_API_KEY) — promptfoo resolves that itself.
+    provider: "{{ env.GRADER_PROVIDER }}"
   assert:
     - type: llm-rubric
       metric: qa_summary_accuracy

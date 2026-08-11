@@ -26,11 +26,13 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   - `javascript` (metric `citation_accuracy`) deterministically checks that every
     answer's citation matches the gold citation's `fileName`.
   `scripts/score-dashboard.js` blends them `0.6 × rubric + 0.4 × citation`.
-  The `llm-rubric` grading provider is pinned explicitly via `defaultTest.options.provider`
-  in `promptfooconfig.yaml`, so a machine-local `OPENAI_API_KEY` can't silently switch
-  the judge model.
+  The `llm-rubric` grading provider is read directly from `GRADER_PROVIDER` in `.env`
+  (e.g. `anthropic:messages:claude-sonnet-4-5` or `openai:chat:gpt-4o`) via
+  `defaultTest.options.provider` in `promptfooconfig.yaml` — there's no hardcoded
+  default, so `GRADER_PROVIDER` must be set. That provider's own API key must also
+  be set (e.g. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
-- **`ingestTime` and `claimProcTime` currently report the same measured value.** The real platform exposes one opaque trigger-to-complete signal for the whole embed+report pipeline (see `docs/superpowers/specs/2026-08-07-fraudx-claim-processing-design.md` if that repo is available to you) — there's no separately observable "ingestion done" milestone today.
+- **`ingestTime` and `claimProcTime` are measured as two independent phases.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop as `ingestion.timeMs`, and separately times `triggerClaimProcessing` + `waitForClaimProcessing` (the report/Q&A generation phase) as `processing.timeMs`.
 - **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `citation_accuracy` regex-extracts them and matches on `fileName`.
 - **Entity extraction accuracy (`entAcc`) is not implemented yet** — it stays `null`
   in the dashboard output until that scoring is built.
