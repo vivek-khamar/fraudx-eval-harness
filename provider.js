@@ -30,28 +30,28 @@ class FraudXClaimProvider {
       timeoutMs
     );
 
-    const filesForUpload = sourceDocs.map((d) => ({
-      fileName: d.fileName,
-      contentType: fraudxClient.contentTypeForExtension(d.extension),
-    }));
-    const uploads = await fraudxClient.requestUploadUrls(base, auth, filesForUpload, newBucketId, timeoutMs);
-
     const uploadPollConfig = {
       pollIntervalMs: Number(process.env.FRAUDX_UPLOAD_POLL_INTERVAL_MS || 2000),
-      pollTimeoutMs: Number(process.env.FRAUDX_UPLOAD_POLL_TIMEOUT_MS || 120000),
+      pollTimeoutMs: Number(process.env.FRAUDX_UPLOAD_POLL_TIMEOUT_MS || 600000),
     };
+    const ingestionStart = Date.now();
     for (const doc of sourceDocs) {
+      const contentType = fraudxClient.contentTypeForExtension(doc.extension);
       const downloadUrl = await fraudxClient.getDownloadUrl(base, doc.gxMasterId, auth, timeoutMs);
       const bytes = await fraudxClient.downloadFile(downloadUrl, timeoutMs);
+      // Requested here, immediately before use, rather than batched for all documents before the loop —
+      // presigned upload URLs go stale within minutes on the real platform, and each document can now
+      // take minutes of real GX processing before the next one's turn comes up.
+      const uploads = await fraudxClient.requestUploadUrls(base, auth, [{ fileName: doc.fileName, contentType }], newBucketId, timeoutMs);
       const upload = uploads.find((u) => u.fileName === doc.fileName);
       if (!upload) {
         throw new Error(`No upload URL returned for file "${doc.fileName}"`);
       }
-      const contentType = fraudxClient.contentTypeForExtension(doc.extension);
       await fraudxClient.uploadFile(upload.uploadUrl, bytes, contentType, timeoutMs);
       await fraudxClient.triggerJobProcessing(base, auth, [upload.jobId], timeoutMs);
       await fraudxClient.waitForDocumentUpload(base, newBucketId, upload.jobId, auth, timeoutMs, uploadPollConfig);
     }
+    const ingestionTimeMs = Date.now() - ingestionStart;
 
     const processingStart = Date.now();
     await fraudxClient.triggerClaimProcessing(base, auth, newBucketId, newClaim.processingModelId, timeoutMs);
@@ -65,7 +65,7 @@ class FraudXClaimProvider {
 
     return {
       output: {
-        ingestion: { timeMs: processingTimeMs },
+        ingestion: { timeMs: ingestionTimeMs },
         processing: { timeMs: processingTimeMs },
         report,
       },

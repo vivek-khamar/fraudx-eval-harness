@@ -10,6 +10,23 @@ const EXTENSION_CONTENT_TYPES = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
+const FETCH_RETRY_ATTEMPTS = 2;
+
+async function fetchWithRetry(url, options) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
+      const isTransientNetworkError = !isTimeout && err instanceof TypeError;
+      if (!isTransientNetworkError || attempt >= FETCH_RETRY_ATTEMPTS) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
+    }
+  }
+}
+
 function contentTypeForExtension(extension) {
   const contentType = EXTENSION_CONTENT_TYPES[extension.toLowerCase()];
   if (!contentType) {
@@ -29,7 +46,7 @@ async function login(base, timeoutMs) {
 
   let res;
   try {
-    res = await fetch(`${base}/fraudx/api/public/v1/auth/login`, {
+    res = await fetchWithRetry(`${base}/fraudx/api/public/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -60,7 +77,7 @@ async function login(base, timeoutMs) {
 async function postDocumentList(base, bucketId, requestBody, auth, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/document-processor/api/documents/v1/views/list/${bucketId}`, {
+    res = await fetchWithRetry(`${base}/document-processor/api/documents/v1/views/list/${bucketId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -113,7 +130,7 @@ async function listBucketDocuments(base, bucketId, auth, timeoutMs) {
 async function getDownloadUrl(base, gxMasterId, auth, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/document-processor/api/documents/v1/downloads/presigned-url`, {
+    res = await fetchWithRetry(`${base}/document-processor/api/documents/v1/downloads/presigned-url`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -144,7 +161,7 @@ async function getDownloadUrl(base, gxMasterId, auth, timeoutMs) {
 async function downloadFile(url, timeoutMs) {
   let res;
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    res = await fetchWithRetry(url, { signal: AbortSignal.timeout(timeoutMs) });
   } catch (err) {
     if (err.name === 'TimeoutError' || err.name === 'AbortError') {
       throw new Error(`Downloading file timed out after ${timeoutMs}ms`);
@@ -160,7 +177,7 @@ async function downloadFile(url, timeoutMs) {
 async function createClaim(base, auth, claimConfig, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/fraudx/api/v1/claims`, {
+    res = await fetchWithRetry(`${base}/fraudx/api/v1/claims`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -191,7 +208,7 @@ async function createClaim(base, auth, claimConfig, timeoutMs) {
 async function requestUploadUrls(base, auth, files, newBucketId, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/document-processor/api/documents/v2/uploads/direct`, {
+    res = await fetchWithRetry(`${base}/document-processor/api/documents/v2/uploads/direct`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -199,7 +216,7 @@ async function requestUploadUrls(base, auth, files, newBucketId, timeoutMs) {
         'x-org-id': String(auth.orgId),
         'x-user-id': String(auth.userId),
       },
-      body: JSON.stringify({ files, gxBucketId: newBucketId, skipGxProcess: true }),
+      body: JSON.stringify({ files, gxBucketId: newBucketId, skipGxProcess: false }),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
@@ -222,7 +239,7 @@ async function requestUploadUrls(base, auth, files, newBucketId, timeoutMs) {
 async function uploadFile(uploadUrl, bytes, contentType, timeoutMs) {
   let res;
   try {
-    res = await fetch(uploadUrl, {
+    res = await fetchWithRetry(uploadUrl, {
       method: 'PUT',
       headers: { 'Content-Type': contentType },
       body: bytes,
@@ -242,7 +259,7 @@ async function uploadFile(uploadUrl, bytes, contentType, timeoutMs) {
 async function triggerJobProcessing(base, auth, jobIds, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/document-processor/api/documents/v2/jobs/trigger-processing`, {
+    res = await fetchWithRetry(`${base}/document-processor/api/documents/v2/jobs/trigger-processing`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -306,7 +323,7 @@ async function waitForDocumentUpload(base, bucketId, jobId, auth, timeoutMs, { p
 async function listGxBuckets(base, auth, requestBody, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/fraudx/api/v1/gx-bucket/list-buckets`, {
+    res = await fetchWithRetry(`${base}/fraudx/api/v1/gx-bucket/list-buckets`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -352,7 +369,7 @@ async function getBucketDetails(base, bucketId, auth, timeoutMs) {
 async function triggerClaimProcessing(base, auth, bucketId, processingModelId, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/fraudx/api/v1/claims/process`, {
+    res = await fetchWithRetry(`${base}/fraudx/api/v1/claims/process`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -402,7 +419,7 @@ async function waitForClaimProcessing(base, bucketId, auth, timeoutMs, { pollInt
 async function fetchReport(base, reportId, auth, timeoutMs) {
   let res;
   try {
-    res = await fetch(`${base}/fraudx/api/v1/dashboard/reports/${reportId}`, {
+    res = await fetchWithRetry(`${base}/fraudx/api/v1/dashboard/reports/${reportId}`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${auth.token}`,

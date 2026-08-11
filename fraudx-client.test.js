@@ -72,6 +72,61 @@ test('login throws a clear error on non-2xx', async (t) => {
   await assert.rejects(() => login('https://fake.fraudx.test', 5000), /Login failed: 401 bad credentials/);
 });
 
+test('login retries on a transient network error and succeeds once the connection recovers', async (t) => {
+  let calls = 0;
+  withFetchMock(t, async () => {
+    calls++;
+    if (calls <= 2) throw new TypeError('fetch failed');
+    return {
+      ok: true,
+      json: async () => ({ response: { token: 't', customer: { lastActiveOrg: 1, userId: 68 } } }),
+    };
+  });
+  process.env.FRAUDX_LOGIN_EMAIL = 'a@b.com';
+  process.env.FRAUDX_LOGIN_PASSWORD = 'secret';
+  t.after(() => {
+    delete process.env.FRAUDX_LOGIN_EMAIL;
+    delete process.env.FRAUDX_LOGIN_PASSWORD;
+  });
+  const auth = await login('https://fake.fraudx.test', 5000);
+  assert.deepEqual(auth, { token: 't', orgId: 1, userId: 68 });
+  assert.equal(calls, 3);
+});
+
+test('login does not retry a timeout, and does not retry non-network errors', async (t) => {
+  let calls = 0;
+  withFetchMock(t, async () => {
+    calls++;
+    const err = new Error('aborted');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+  process.env.FRAUDX_LOGIN_EMAIL = 'a@b.com';
+  process.env.FRAUDX_LOGIN_PASSWORD = 'secret';
+  t.after(() => {
+    delete process.env.FRAUDX_LOGIN_EMAIL;
+    delete process.env.FRAUDX_LOGIN_PASSWORD;
+  });
+  await assert.rejects(() => login('https://fake.fraudx.test', 5000), /Login timed out after 5000ms/);
+  assert.equal(calls, 1, 'a timeout must not be retried');
+});
+
+test('login gives up after exhausting retries on a persistent transient network error', async (t) => {
+  let calls = 0;
+  withFetchMock(t, async () => {
+    calls++;
+    throw new TypeError('fetch failed');
+  });
+  process.env.FRAUDX_LOGIN_EMAIL = 'a@b.com';
+  process.env.FRAUDX_LOGIN_PASSWORD = 'secret';
+  t.after(() => {
+    delete process.env.FRAUDX_LOGIN_EMAIL;
+    delete process.env.FRAUDX_LOGIN_PASSWORD;
+  });
+  await assert.rejects(() => login('https://fake.fraudx.test', 5000), /fetch failed/);
+  assert.equal(calls, 3, 'must attempt exactly maxRetries+1 times before giving up');
+});
+
 test('login throws a clear error when the response is missing token/orgId/userId', async (t) => {
   withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: { customer: {} } }) }));
   process.env.FRAUDX_LOGIN_EMAIL = 'a@b.com';
@@ -199,11 +254,11 @@ test('createClaim throws when response.bucket.bucketId is missing', async (t) =>
   );
 });
 
-test('requestUploadUrls sends skipGxProcess:true and returns response.uploads', async (t) => {
+test('requestUploadUrls sends skipGxProcess:false and returns response.uploads', async (t) => {
   withFetchMock(t, async (url, opts) => {
     assert.equal(url, 'https://fake.fraudx.test/document-processor/api/documents/v2/uploads/direct');
     const body = JSON.parse(opts.body);
-    assert.equal(body.skipGxProcess, true);
+    assert.equal(body.skipGxProcess, false);
     assert.equal(body.gxBucketId, 31804);
     assert.deepEqual(body.files, [{ fileName: 'a.pdf', contentType: 'application/pdf' }]);
     return { ok: true, json: async () => ({ response: { uploads: [{ fileName: 'a.pdf', jobId: 1, uploadUrl: 'https://s3.example/put' }] } }) };
@@ -336,7 +391,7 @@ test('waitForDocumentUpload polls until Completed, throws on error, throws on po
   );
 });
 
-test('waitForDocumentUpload treats Skipped as success (skipGxProcess:true uploads never reach Completed)', async (t) => {
+test('waitForDocumentUpload treats Skipped as success (the real platform can return this status too)', async (t) => {
   withFetchMock(t, async () => ({
     ok: true,
     json: async () => ({ response: { content: [{ jobId: 4, status: 'Skipped', error: null }], page: {} } }),
