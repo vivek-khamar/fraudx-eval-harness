@@ -1,7 +1,7 @@
 # fraudx-claim-eval
 
-A standalone promptfoo eval that runs one immutable "golden claim" through the FraudX
-document-ingestion + report pipeline and scores it against a human-verified answer key.
+A standalone promptfoo eval that runs one or more immutable "golden claims" through the FraudX
+document-ingestion + report pipeline and scores each against a human-verified answer key.
 
 ## Design
 
@@ -20,7 +20,7 @@ document-ingestion + report pipeline and scores it against a human-verified answ
   just fields on the provider's output, already timed by the time promptfoo sees
   them. `scripts/score-dashboard.js` reports them as-is — no budget or percentage
   math, just the raw millisecond values.
-- **Accuracy is graded inside promptfoo**, via two assertions on the one test case:
+- **Accuracy is graded inside promptfoo**, via two assertions applied to every test case (one per golden claim):
   - `qa_match` (deterministic `javascript`) checks that each answer's `riskStatus` exactly matches
     the gold `expectedRiskStatus`, over all 35 questions.
   - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary and
@@ -62,15 +62,25 @@ npm run eval
   by default, and a cached "response" would mean `provider.js` never actually
   calls your endpoint on a re-run, silently returning stale timing data that would
   make a real regression invisible.
-- `npm run score` reads `results.json` and prints the four dashboard numbers:
+- `npm run score` reads `results.json` and prints one dashboard object per claim:
 
 ```json
-{
-  "ingestTime": 71,
-  "claimProcTime": 184,
-  "acc": 94,
-  "entAcc": null
-}
+[
+  {
+    "claimId": "FX-GOLD-5K-v1",
+    "ingestTime": 71,
+    "claimProcTime": 184,
+    "acc": 94,
+    "entAcc": null
+  },
+  {
+    "claimId": "FX-GOLD-G3128974-v1",
+    "ingestTime": 53,
+    "claimProcTime": 96,
+    "acc": 68,
+    "entAcc": null
+  }
+]
 ```
 
 `ingestTime` and `claimProcTime` are raw seconds (ingestion phase alone, and report-generation phase alone, respectively) — not scores or percentages.
@@ -112,14 +122,15 @@ code — it is not caused by anything in this repo. Upgrading promptfoo
 `^0.122.0`, and a real end-to-end run against that version no longer
 reproduces the bug.
 
-## Scaling to multiple claims
+## Adding another golden claim
 
-This repo is deliberately built around **one** golden claim, per the FraudX
-eval doc's own intent: *"a single, versioned, immutable claim... keep it small,
-fixed, and fast — it is the safety net, not a full test plan."* Running every
-change against a bigger claim set is a legitimate thing to want, but it's a
-**different suite** — a broader regression/benchmark run, not the per-change
-smoke test this repo is. If you need that, build a separate
-`promptfooconfig-regression.yaml` with a `tests:` list of multiple claim fixture
-files, and run it on a slower cadence (nightly, or before a model swap) rather
-than wiring it into the same gate that blocks merges today.
+`testdata/claims.json` is an array — add another entry to it (following the
+existing shape) and re-run `npm run generate:tests` (this also happens
+automatically before `npm test`/`npm run eval`) to regenerate `tests.vars.yaml`
+with one promptfoo test case per claim. Each claim is scored independently;
+there's no cap on how many can run in the same suite. Keep in mind the FraudX
+eval doc's own intent for this kind of fixture — *"a single, versioned,
+immutable claim... keep it small, fixed, and fast — it is the safety net, not
+a full test plan"* — so favor a handful of curated claims over a large,
+slow-to-run set; a much bigger benchmark/regression run is still a different
+thing than this per-change smoke test.

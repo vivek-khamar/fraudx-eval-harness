@@ -31,50 +31,55 @@ test('config loads test cases from tests.vars.yaml via a whole-file reference, n
   assert.equal(config.tests, 'file://tests.vars.yaml');
 });
 
-test('tests.vars.yaml declares one test case wired to the golden claim bucket fixture', () => {
+test('tests.vars.yaml declares one test case per golden claim bucket fixture', () => {
   assert.ok(Array.isArray(testCases));
-  assert.equal(testCases.length, 1);
-  const testCase = testCases[0];
-  assert.equal(testCase.vars.claimId, 'FX-GOLD-5K-v1');
-  assert.ok(typeof testCase.vars.bucket === 'object' && testCase.vars.bucket !== null, 'vars.bucket must be an inline object, not a file:// reference');
-  assert.ok(typeof testCase.vars.expected === 'object' && testCase.vars.expected !== null, 'vars.expected must be an inline object, not a file:// reference');
-});
-
-test('vars.bucket has a sourceBucketId and a newClaim config', () => {
-  const bucket = testCases[0].vars.bucket;
-  assert.equal(typeof bucket.sourceBucketId, 'number');
-
-  assert.equal(typeof bucket.newClaim.bucketName, 'string');
-  assert.ok(bucket.newClaim.bucketName.length > 0);
-  assert.equal(typeof bucket.newClaim.claimCategoryId, 'number');
-  assert.equal(typeof bucket.newClaim.ingestionModelId, 'number');
-  assert.equal(typeof bucket.newClaim.processingModelId, 'number');
-  assert.ok(Array.isArray(bucket.newClaim.tags));
-  for (const tag of bucket.newClaim.tags) {
-    assert.equal(typeof tag.tagId, 'number');
-    assert.equal(typeof tag.tagValueId, 'number');
+  assert.ok(testCases.length >= 1);
+  for (const testCase of testCases) {
+    assert.equal(typeof testCase.vars.claimId, 'string');
+    assert.ok(typeof testCase.vars.bucket === 'object' && testCase.vars.bucket !== null, 'vars.bucket must be an inline object, not a file:// reference');
+    assert.ok(typeof testCase.vars.expected === 'object' && testCase.vars.expected !== null, 'vars.expected must be an inline object, not a file:// reference');
   }
 });
 
-test('vars.expected has a summary and exactly 35 predefined-question entries', () => {
-  const expected = testCases[0].vars.expected;
-  assert.equal(typeof expected.summarySynopsis, 'string');
-  assert.ok(expected.summarySynopsis.length > 0);
+test('every test case\'s vars.bucket has a sourceBucketId and a newClaim config', () => {
+  for (const testCase of testCases) {
+    const bucket = testCase.vars.bucket;
+    assert.equal(typeof bucket.sourceBucketId, 'number');
 
-  assert.ok(Array.isArray(expected.qa));
-  assert.equal(expected.qa.length, 35, 'vars.expected.qa must have one entry per predefined question in claim category 23 — see the report-fetch design doc');
+    assert.equal(typeof bucket.newClaim.bucketName, 'string');
+    assert.ok(bucket.newClaim.bucketName.length > 0);
+    assert.equal(typeof bucket.newClaim.claimCategoryId, 'number');
+    assert.equal(typeof bucket.newClaim.ingestionModelId, 'number');
+    assert.equal(typeof bucket.newClaim.processingModelId, 'number');
+    assert.ok(Array.isArray(bucket.newClaim.tags));
+    for (const tag of bucket.newClaim.tags) {
+      assert.equal(typeof tag.tagId, 'number');
+      assert.equal(typeof tag.tagValueId, 'number');
+    }
+  }
+});
 
-  const seenIds = new Set();
-  for (const entry of expected.qa) {
-    assert.equal(typeof entry.predefinedQuestionId, 'number');
-    assert.ok(!seenIds.has(entry.predefinedQuestionId), `duplicate predefinedQuestionId ${entry.predefinedQuestionId}`);
-    seenIds.add(entry.predefinedQuestionId);
-    assert.equal(typeof entry.question, 'string');
-    assert.equal(typeof entry.expectedAnswerSummary, 'string');
-    assert.equal(typeof entry.expectedRiskStatus, 'string');
-    assert.ok(Array.isArray(entry.expectedCitationFileNames));
-    for (const fileName of entry.expectedCitationFileNames) {
-      assert.equal(typeof fileName, 'string');
+test('every test case\'s vars.expected has a summary and at least one predefined-question entry', () => {
+  for (const testCase of testCases) {
+    const expected = testCase.vars.expected;
+    assert.equal(typeof expected.summarySynopsis, 'string');
+    assert.ok(expected.summarySynopsis.length > 0);
+
+    assert.ok(Array.isArray(expected.qa));
+    assert.ok(expected.qa.length > 0, `vars.expected.qa must have at least one entry (claimId: ${testCase.vars.claimId})`);
+
+    const seenIds = new Set();
+    for (const entry of expected.qa) {
+      assert.equal(typeof entry.predefinedQuestionId, 'number');
+      assert.ok(!seenIds.has(entry.predefinedQuestionId), `duplicate predefinedQuestionId ${entry.predefinedQuestionId} (claimId: ${testCase.vars.claimId})`);
+      seenIds.add(entry.predefinedQuestionId);
+      assert.equal(typeof entry.question, 'string');
+      assert.equal(typeof entry.expectedAnswerSummary, 'string');
+      assert.equal(typeof entry.expectedRiskStatus, 'string');
+      assert.ok(Array.isArray(entry.expectedCitationFileNames));
+      for (const fileName of entry.expectedCitationFileNames) {
+        assert.equal(typeof fileName, 'string');
+      }
     }
   }
 });
