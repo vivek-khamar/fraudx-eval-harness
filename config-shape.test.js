@@ -79,63 +79,58 @@ test('vars.expected has a summary and exactly 35 predefined-question entries', (
   }
 });
 
-test('config declares the qa_summary_accuracy (llm-rubric) and citation_accuracy (javascript) assertions', () => {
+test('config declares exactly four assertions: qa_match, qa_grounding, report_quality, hallucination_consistency', () => {
   const asserts = config.defaultTest.assert;
   assert.ok(Array.isArray(asserts));
-  assert.equal(asserts.length, 2);
+  assert.equal(asserts.length, 4);
 
-  const rubric = asserts.find((a) => a.metric === 'qa_summary_accuracy');
-  assert.equal(rubric.type, 'llm-rubric');
-  assert.ok(rubric.value.includes('{{expected.summarySynopsis}}'));
-  assert.ok(rubric.value.includes('expected.qa | dump'));
-  assert.ok(!rubric.value.includes('{{expected.qa}}'));
+  const qaMatch = asserts.find((a) => a.metric === 'qa_match');
+  assert.equal(qaMatch.type, 'javascript');
 
-  const citation = asserts.find((a) => a.metric === 'citation_accuracy');
-  assert.equal(citation.type, 'javascript');
-  assert.equal(citation.threshold, 0.95);
-  assert.ok(citation.value.includes('InTextCitation'));
-  assert.ok(citation.value.includes('expectedCitationFileNames'));
-  assert.ok(citation.value.includes('return'), 'assertion body must use |- with an explicit return, not >- folding');
+  const qaGrounding = asserts.find((a) => a.metric === 'qa_grounding');
+  assert.equal(qaGrounding.type, 'llm-rubric');
+  assert.ok(qaGrounding.value.includes('{{expected.qa | dump}}'));
+  assert.ok(qaGrounding.value.toLowerCase().includes('score must equal'));
+
+  const reportQuality = asserts.find((a) => a.metric === 'report_quality');
+  assert.equal(reportQuality.type, 'llm-rubric');
+  assert.ok(reportQuality.value.includes('{{expected.summarySynopsis}}'));
+
+  const hallucination = asserts.find((a) => a.metric === 'hallucination_consistency');
+  assert.equal(hallucination.type, 'llm-rubric');
+  assert.ok(hallucination.value.toLowerCase().includes('score must equal'));
 });
 
-test('citation_accuracy assertion, executed the way promptfoo runs it, computes the fraction of matching citations', () => {
-  const citation = config.defaultTest.assert.find((a) => a.metric === 'citation_accuracy');
-  assert.ok(citation.value.includes('\n'), 'value must be multi-line so promptfoo treats it as a raw function body needing an explicit return');
+test('qa_match assertion, executed the way promptfoo runs it, computes the fraction of matching risk determinations', () => {
+  const qaMatch = config.defaultTest.assert.find((a) => a.metric === 'qa_match');
+  assert.ok(qaMatch.value.includes('\n'), 'value must be multi-line so promptfoo treats it as a raw function body needing an explicit return');
 
-  const fn = new Function('output', 'context', citation.value);
+  const fn = new Function('output', 'context', qaMatch.value);
 
   const expectedQa = [
-    { predefinedQuestionId: 1, expectedCitationFileNames: ['a.pdf'] },
-    { predefinedQuestionId: 2, expectedCitationFileNames: ['b.pdf'] },
-    { predefinedQuestionId: 3, expectedCitationFileNames: [] },
+    { predefinedQuestionId: 1, expectedRiskStatus: 'RISK_DETECTED' },
+    { predefinedQuestionId: 2, expectedRiskStatus: 'UNSURE' },
+    { predefinedQuestionId: 3, expectedRiskStatus: 'RISK_DETECTED' },
   ];
   const output = {
     report: {
       questions: [
-        { predefinedQuestionId: 1, answer: 'x <InTextCitation fileName="a.pdf"></InTextCitation>' },
-        { predefinedQuestionId: 2, answer: 'y <InTextCitation fileName="wrong.pdf"></InTextCitation>' },
-        { predefinedQuestionId: 3, answer: 'No sources found' },
+        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED' },
+        { predefinedQuestionId: 2, riskStatus: 'RISK_DETECTED' }, // mismatch vs UNSURE
+        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED' },
       ],
     },
   };
   const result = fn(output, { vars: { expected: { qa: expectedQa } } });
-  assert.equal(result, 0.5); // 1 of 2 citation-bearing questions matched; question 3 excluded (no citation expected)
+  assert.equal(result, 2 / 3);
 });
 
-test('citation_accuracy assertion decodes URL-encoded fileName attributes before comparing', () => {
-  // The real FraudX report embeds fileName as a URL-encoded attribute, e.g.
-  // fileName="JOSE%2BBRIONES%2BWC%2BFILE%2BCOMPLETE_part10.pdf" for the real
-  // document named "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf". expectedCitationFileNames
-  // is authored in decoded, human-readable form — the assertion must decode to match.
-  const citation = config.defaultTest.assert.find((a) => a.metric === 'citation_accuracy');
-  const fn = new Function('output', 'context', citation.value);
+test('qa_match assertion returns 0 for a question missing from the real report entirely', () => {
+  const qaMatch = config.defaultTest.assert.find((a) => a.metric === 'qa_match');
+  const fn = new Function('output', 'context', qaMatch.value);
 
-  const expectedQa = [{ predefinedQuestionId: 1, expectedCitationFileNames: ['JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf'] }];
-  const output = {
-    report: {
-      questions: [{ predefinedQuestionId: 1, answer: 'x <InTextCitation fileName="JOSE%2BBRIONES%2BWC%2BFILE%2BCOMPLETE_part10.pdf"></InTextCitation>' }],
-    },
-  };
+  const expectedQa = [{ predefinedQuestionId: 1, expectedRiskStatus: 'RISK_DETECTED' }];
+  const output = { report: { questions: [] } };
   const result = fn(output, { vars: { expected: { qa: expectedQa } } });
-  assert.equal(result, 1);
+  assert.equal(result, 0);
 });

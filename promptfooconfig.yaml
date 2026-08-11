@@ -11,39 +11,45 @@ defaultTest:
     # key must also be set (e.g. OPENAI_API_KEY) — promptfoo resolves that itself.
     provider: "{{ env.GRADER_PROVIDER }}"
   assert:
+    - type: javascript
+      metric: qa_match
+      value: |-
+        const matched = context.vars.expected.qa.filter((q) => {
+          const actual = output.report.questions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
+          return actual && actual.riskStatus === q.expectedRiskStatus;
+        }).length;
+        return matched / context.vars.expected.qa.length;
     - type: llm-rubric
-      metric: qa_summary_accuracy
+      metric: qa_grounding
+      value: >-
+        Gold Q&A with expected citations: {{expected.qa | dump}}
+        The output above includes report.questions (the real answers) and citedDocumentsText
+        (a map of fileName to that document's extracted text). For each gold Q&A entry with a
+        non-empty expectedCitationFileNames, find the matching real answer by predefinedQuestionId,
+        and check whether that answer's claim is actually supported by the text in
+        citedDocumentsText for its cited fileName. Count how many are grounded, out of how many
+        gold entries had an expected citation to check. Your score MUST equal
+        (grounded count / checked count), not a generic confidence value. If no gold entries have
+        an expected citation, your score is 1.
+    - type: llm-rubric
+      metric: report_quality
       value: >-
         Gold summary: {{expected.summarySynopsis}}
-        Gold Q&A (35 predefined questions with expected risk determinations): {{expected.qa | dump}}
-        Pass only if the report's summary conveys the same key facts with no hallucinated
-        content, and each question's answer reaches the same risk determination as its
-        gold entry (exact wording not required).
-    - type: javascript
-      metric: citation_accuracy
-      threshold: 0.95
-      value: |-
-        function extractCitationFileNames(answerText) {
-          const fileNames = [];
-          const tagRegex = /<InTextCitation\b([^>]*)>/g;
-          let match;
-          while ((match = tagRegex.exec(answerText)) !== null) {
-            const fileNameMatch = /fileName="([^"]*)"/.exec(match[1]);
-            if (fileNameMatch) fileNames.push(decodeURIComponent(fileNameMatch[1]));
-          }
-          return fileNames;
-        }
-        const expectedWithCitations = context.vars.expected.qa.filter((q) => q.expectedCitationFileNames.length > 0);
-        if (expectedWithCitations.length === 0) {
-          return 1;
-        }
-        const matchCount = expectedWithCitations.filter((q) => {
-          const actual = output.report.questions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
-          if (!actual) return false;
-          const actualFileNames = extractCitationFileNames(actual.answer);
-          return q.expectedCitationFileNames.some((fn) => actualFileNames.includes(fn));
-        }).length;
-        return matchCount / expectedWithCitations.length;
+        The output above includes report.summary (the real summary). Judge the real summary
+        against the gold summary on: completeness (does it cover the same key facts), clinical
+        correctness, whether anything important from the gold summary is missing, and whether it
+        introduces any hallucinated (unsupported) information. Your score should reflect overall
+        quality across all four criteria as a single 0-1 value.
+    - type: llm-rubric
+      metric: hallucination_consistency
+      value: >-
+        The output above includes report.summary (the real summary) and citedDocumentsText (a map
+        of fileName to extracted source-document text). Identify the distinct factual claims made
+        in report.summary. For each, check whether it is supported by the combined text in
+        citedDocumentsText. Count how many claims are factually consistent, out of how many
+        distinct claims you identified. Your score MUST equal (consistent count / total claims
+        identified), not a generic confidence value. If you can't identify any checkable claims in
+        the summary, your score is 1.
 
 # Test cases are generated from testdata/claims.json (see scripts/generate-tests-vars.js)
 # into tests.vars.yaml — add a new golden claim there, not here or in tests.vars.yaml directly.
