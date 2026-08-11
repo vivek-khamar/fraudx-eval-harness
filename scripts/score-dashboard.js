@@ -19,8 +19,8 @@ function scoreDashboard(resultsFilePath) {
   const output = result.response.output;
   const namedScores = result.gradingResult.namedScores;
 
-  const ingestTime = output.ingestion.timeMs;
-  const claimProcTime = output.processing.timeMs;
+  const ingestTime = output.ingestion.timeMs / 1000;
+  const claimProcTime = output.processing.timeMs / 1000;
 
   const acc = Math.round(50 * namedScores.qa_match + 50 * namedScores.report_quality);
   if (Number.isNaN(acc)) {

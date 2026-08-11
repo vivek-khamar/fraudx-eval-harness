@@ -9,15 +9,15 @@ test('scoreDashboard reads results.json and computes all four dashboard numbers'
   const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
   const dashboard = scoreDashboard(fixture);
 
-  // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported as-is, no budget scoring.
-  assert.equal(dashboard.ingestTime, 60000);
-  assert.equal(dashboard.claimProcTime, 300000);
+  // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported in seconds, no budget scoring.
+  assert.equal(dashboard.ingestTime, 60);
+  assert.equal(dashboard.claimProcTime, 300);
   // acc = round(50*qa_match + 50*report_quality) = round(50*0.9 + 50*0.85) = round(87.5) = 88
   assert.equal(dashboard.acc, 88);
   assert.equal(dashboard.entAcc, null);
 });
 
-test('scoreDashboard reports ingestTime and claimProcTime independently, without combining them', () => {
+test('scoreDashboard reports ingestTime and claimProcTime independently, in seconds, without combining them', () => {
   const fs = require('node:fs');
   const os = require('node:os');
   const fixturePath = path.join(os.tmpdir(), 'independent-timers-results.json');
@@ -29,7 +29,7 @@ test('scoreDashboard reports ingestTime and claimProcTime independently, without
           {
             response: {
               output: {
-                ingestion: { timeMs: 400000 },
+                ingestion: { timeMs: 401500 },
                 processing: { timeMs: 300000 },
                 report: { summary: 's', qa: [] },
               },
@@ -50,8 +50,8 @@ test('scoreDashboard reports ingestTime and claimProcTime independently, without
 
   const dashboard = scoreDashboard(fixturePath);
 
-  assert.equal(dashboard.ingestTime, 400000);
-  assert.equal(dashboard.claimProcTime, 300000);
+  assert.equal(dashboard.ingestTime, 401.5);
+  assert.equal(dashboard.claimProcTime, 300);
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {
