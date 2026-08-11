@@ -22,8 +22,10 @@
           "pass": true,
           "score": 1,
           "namedScores": {
-            "qa_summary_accuracy": 0.9,
-            "citation_accuracy": 1
+            "qa_match": 0.9,
+            "qa_grounding": 0.8,
+            "report_quality": 0.85,
+            "hallucination_consistency": 0.95
           }
         }
       }

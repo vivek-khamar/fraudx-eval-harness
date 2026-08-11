@@ -5,8 +5,6 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 
-const RUBRIC_WEIGHT = 0.6;
-const CITATION_WEIGHT = 0.4;
 
 function budgetScore(budgetMs, measuredMs) {
   return Math.round(100 * Math.min(1, budgetMs / measuredMs));
@@ -31,9 +29,9 @@ function scoreDashboard(resultsFilePath) {
   const ingestTime = budgetScore(ingestBudgetMs, output.ingestion.timeMs);
   const claimProcTime = budgetScore(claimBudgetMs, output.processing.timeMs);
 
-  const rubricScore = namedScores.qa_summary_accuracy;
-  const citationScore = namedScores.citation_accuracy;
-  const acc = Math.round(100 * (RUBRIC_WEIGHT * rubricScore + CITATION_WEIGHT * citationScore));
+  const qaPct = 50 * namedScores.qa_match + 50 * namedScores.qa_grounding;
+  const reportPct = 100 * namedScores.report_quality;
+  const acc = Math.round((0.5 * reportPct + 0.5 * qaPct) * namedScores.hallucination_consistency);
   if (Number.isNaN(acc)) {
     throw new Error('Computed accuracy score is NaN — a named score is missing from the results file');
   }

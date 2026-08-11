@@ -34,7 +34,8 @@ test('scoreDashboard reads results.json and computes all four dashboard numbers'
 
   assert.equal(dashboard.ingestTime, 100);
   assert.equal(dashboard.claimProcTime, 100);
-  assert.equal(dashboard.acc, 94);
+  // qaPct = 50*0.9 + 50*0.8 = 85; reportPct = 100*0.85 = 85; base = 0.5*85+0.5*85 = 85; acc = round(85*0.95) = 81
+  assert.equal(dashboard.acc, 81);
   assert.equal(dashboard.entAcc, null);
 });
 
@@ -112,8 +113,10 @@ test('scoreDashboard throws a clear NaN error when a named score is missing from
               pass: false,
               score: 0,
               namedScores: {
-                qa_summary_accuracy: 0.9,
-                // citation_accuracy is missing
+                qa_match: 0.9,
+                qa_grounding: 0.8,
+                report_quality: 0.85,
+                // hallucination_consistency is missing
               },
             },
           },
