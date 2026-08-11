@@ -74,7 +74,7 @@ class FraudXClaimProvider {
     await fraudxClient.triggerClaimProcessing(base, auth, newBucketId, newClaim.processingModelId, timeoutMs);
     const bucket = await fraudxClient.waitForClaimProcessing(base, newBucketId, auth, timeoutMs, {
       pollIntervalMs: Number(process.env.FRAUDX_PROCESSING_POLL_INTERVAL_MS || 5000),
-      pollTimeoutMs: Number(process.env.FRAUDX_PROCESSING_POLL_TIMEOUT_MS || 900000),
+      pollTimeoutMs: Number(process.env.FRAUDX_PROCESSING_POLL_TIMEOUT_MS || 1800000),
     });
     const processingTimeMs = Date.now() - processingStart;
 
