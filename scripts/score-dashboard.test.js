@@ -62,7 +62,47 @@ test('scoreDashboard honors INGEST_BUDGET_MS/CLAIM_BUDGET_MS overrides read from
 
   // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000.
   assert.equal(dashboard.ingestTime, budgetScore(30000, 60000)); // 50
-  assert.equal(dashboard.claimProcTime, budgetScore(100000, 300000)); // 33
+  assert.equal(dashboard.claimProcTime, budgetScore(100000, 60000 + 300000)); // 28
+});
+
+test('scoreDashboard scores claimProcTime against ingestion + processing combined (the end-to-end SLA), not processing alone', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const fixturePath = path.join(os.tmpdir(), 'high-ingestion-results.json');
+  fs.writeFileSync(
+    fixturePath,
+    JSON.stringify({
+      results: {
+        results: [
+          {
+            response: {
+              output: {
+                // processing.timeMs alone (300000) is under the 600000 default budget,
+                // but ingestion.timeMs (400000) + processing.timeMs (300000) = 700000 is over it.
+                ingestion: { timeMs: 400000 },
+                processing: { timeMs: 300000 },
+                report: { summary: 's', qa: [] },
+              },
+            },
+            gradingResult: {
+              pass: true,
+              score: 1,
+              namedScores: {
+                qa_match: 0.9,
+                qa_grounding: 0.8,
+                report_quality: 0.85,
+                hallucination_consistency: 0.95,
+              },
+            },
+          },
+        ],
+      },
+    })
+  );
+
+  const dashboard = scoreDashboard(fixturePath);
+
+  assert.equal(dashboard.claimProcTime, budgetScore(600000, 400000 + 300000));
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {

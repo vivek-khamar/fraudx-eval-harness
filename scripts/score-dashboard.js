@@ -26,7 +26,7 @@ function scoreDashboard(resultsFilePath) {
   const namedScores = result.gradingResult.namedScores;
 
   const ingestTime = budgetScore(ingestBudgetMs, output.ingestion.timeMs);
-  const claimProcTime = budgetScore(claimBudgetMs, output.processing.timeMs);
+  const claimProcTime = budgetScore(claimBudgetMs, output.ingestion.timeMs + output.processing.timeMs);
 
   const qaPct = 50 * namedScores.qa_match + 50 * namedScores.qa_grounding;
   const reportPct = 100 * namedScores.report_quality;
