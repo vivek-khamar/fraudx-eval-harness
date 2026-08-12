@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "pretest": "npm run generate:tests",
-    "test": "node --test provider.test.js config-shape.test.js scripts/score-dashboard.test.js fraudx-client.test.js scripts/generate-tests-vars.test.js",
+    "test": "node --test provider.test.js config-shape.test.js scripts/score-dashboard.test.js scripts/qa-match-assertion.test.js fraudx-client.test.js scripts/generate-tests-vars.test.js",
     "generate:tests": "node scripts/generate-tests-vars.js",
     "preeval": "npm run generate:tests",
     "eval:raw": "promptfoo eval -c promptfooconfig.yaml --no-cache --max-concurrency 1 --output results.json",

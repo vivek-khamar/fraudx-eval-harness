@@ -13,12 +13,7 @@ defaultTest:
   assert:
     - type: javascript
       metric: qa_match
-      value: |-
-        const matched = context.vars.expected.qa.filter((q) => {
-          const actual = output.report.questions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
-          return actual && actual.riskStatus === q.expectedRiskStatus;
-        }).length;
-        return matched / context.vars.expected.qa.length;
+      value: file://scripts/qa-match-assertion.js
     - type: llm-rubric
       metric: report_quality
       value: >-

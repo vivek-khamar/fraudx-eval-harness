@@ -91,43 +91,10 @@ test('config declares exactly two assertions: qa_match, report_quality', () => {
 
   const qaMatch = asserts.find((a) => a.metric === 'qa_match');
   assert.equal(qaMatch.type, 'javascript');
+  assert.equal(qaMatch.value, 'file://scripts/qa-match-assertion.js');
 
   const reportQuality = asserts.find((a) => a.metric === 'report_quality');
   assert.equal(reportQuality.type, 'llm-rubric');
   assert.ok(reportQuality.value.includes('{{expected.summarySynopsis}}'));
   assert.ok(reportQuality.value.toLowerCase().includes('citeddocumentstext'));
-});
-
-test('qa_match assertion, executed the way promptfoo runs it, computes the fraction of matching risk determinations', () => {
-  const qaMatch = config.defaultTest.assert.find((a) => a.metric === 'qa_match');
-  assert.ok(qaMatch.value.includes('\n'), 'value must be multi-line so promptfoo treats it as a raw function body needing an explicit return');
-
-  const fn = new Function('output', 'context', qaMatch.value);
-
-  const expectedQa = [
-    { predefinedQuestionId: 1, expectedRiskStatus: 'RISK_DETECTED' },
-    { predefinedQuestionId: 2, expectedRiskStatus: 'UNSURE' },
-    { predefinedQuestionId: 3, expectedRiskStatus: 'RISK_DETECTED' },
-  ];
-  const output = {
-    report: {
-      questions: [
-        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED' },
-        { predefinedQuestionId: 2, riskStatus: 'RISK_DETECTED' }, // mismatch vs UNSURE
-        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED' },
-      ],
-    },
-  };
-  const result = fn(output, { vars: { expected: { qa: expectedQa } } });
-  assert.equal(result, 2 / 3);
-});
-
-test('qa_match assertion returns 0 for a question missing from the real report entirely', () => {
-  const qaMatch = config.defaultTest.assert.find((a) => a.metric === 'qa_match');
-  const fn = new Function('output', 'context', qaMatch.value);
-
-  const expectedQa = [{ predefinedQuestionId: 1, expectedRiskStatus: 'RISK_DETECTED' }];
-  const output = { report: { questions: [] } };
-  const result = fn(output, { vars: { expected: { qa: expectedQa } } });
-  assert.equal(result, 0);
 });
