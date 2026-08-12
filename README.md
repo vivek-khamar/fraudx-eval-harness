@@ -50,10 +50,10 @@ document-ingestion + report pipeline and scores each against a human-verified an
   `provider.js` can't match to a real source document, that citation is skipped rather than
   failing the run.
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
-- **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestTime` and `dashboard.claimProcTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
+- **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
 - **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `provider.js`'s `extractCitedFileNames` regex-extracts them (to decide which documents to fetch text for), and `report_quality` checks claims against that fetched text rather than matching on filename alone.
-- **Entity extraction accuracy (`entAcc`) is not implemented yet** — it stays `null`
-  in the dashboard output until that scoring is built.
+- **Entity extraction accuracy is not implemented yet** — the dashboard has no field for it
+  until that scoring is built.
 
 ## Setup
 
@@ -84,17 +84,15 @@ npm run eval
 [
   {
     "bucketId": 31662,
-    "ingestTime": 71,
-    "claimProcTime": 184,
-    "acc": 94,
-    "entAcc": null
+    "ingestionTime": 71,
+    "processingTime": 184,
+    "accuracy": 94
   },
   {
     "bucketId": 31970,
-    "ingestTime": 53,
-    "claimProcTime": 96,
-    "acc": 68,
-    "entAcc": null
+    "ingestionTime": 53,
+    "processingTime": 96,
+    "accuracy": 68
   }
 ]
 ```
@@ -107,10 +105,13 @@ the `error` text is the only record of what happened.
 
 If a claim's provider call errored (e.g. a platform outage, a bad model ID for the current
 environment) or its accuracy score came out `NaN`, that claim's entry has an `error` field
-instead of the four numbers — it does not stop the other claims in the same run from being
-scored.
+instead of the three numbers — it does not stop the other claims in the same run from being
+scored. A claim can still be fully scored even if `results.json` marks it as errored overall —
+promptfoo sets that top-level error to a human-readable summary whenever any assertion's own
+`pass` verdict is false (e.g. `report_quality`'s LLM judge deciding a summary is incomplete),
+which doesn't mean the pipeline or scoring actually failed.
 
-`ingestTime` and `claimProcTime` are raw seconds (ingestion phase alone, and report-generation phase alone, respectively) — not scores or percentages.
+`ingestionTime` and `processingTime` are raw seconds (ingestion phase alone, and report-generation phase alone, respectively) — not scores or percentages.
 
 ## Running the unit tests
 

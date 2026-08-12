@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { scoreDashboard } = require('./score-dashboard');
 
-test('scoreDashboard reads results.json and computes all four dashboard numbers for the one claim it contains', () => {
+test('scoreDashboard reads results.json and computes all three dashboard numbers for the one claim it contains', () => {
   const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
   const dashboards = scoreDashboard(fixture);
 
@@ -13,15 +13,14 @@ test('scoreDashboard reads results.json and computes all four dashboard numbers 
   const dashboard = dashboards[0];
   assert.equal(dashboard.bucketId, 31662);
   // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported in seconds, no budget scoring.
-  assert.equal(dashboard.ingestTime, 60);
-  assert.equal(dashboard.claimProcTime, 300);
+  assert.equal(dashboard.ingestionTime, 60);
+  assert.equal(dashboard.processingTime, 300);
   // acc = round((100/3)*riskStatusMatch + (100/3)*answerContentMatch + (100/3)*report_quality)
   //     = round((100/3)*0.9 + (100/3)*0.7 + (100/3)*0.85) = round(81.666...) = 82
-  assert.equal(dashboard.acc, 82);
-  assert.equal(dashboard.entAcc, null);
+  assert.equal(dashboard.accuracy, 82);
 });
 
-test('scoreDashboard reports ingestTime and claimProcTime independently, in seconds, without combining them', () => {
+test('scoreDashboard reports ingestionTime and processingTime independently, in seconds, without combining them', () => {
   const fs = require('node:fs');
   const os = require('node:os');
   const fixturePath = path.join(os.tmpdir(), 'independent-timers-results.json');
@@ -55,8 +54,8 @@ test('scoreDashboard reports ingestTime and claimProcTime independently, in seco
 
   const dashboards = scoreDashboard(fixturePath);
 
-  assert.equal(dashboards[0].ingestTime, 401.5);
-  assert.equal(dashboards[0].claimProcTime, 300);
+  assert.equal(dashboards[0].ingestionTime, 401.5);
+  assert.equal(dashboards[0].processingTime, 300);
 });
 
 test('scoreDashboard scores every claim in results.json independently, not just the first one', () => {
@@ -97,12 +96,12 @@ test('scoreDashboard scores every claim in results.json independently, not just 
 
   assert.equal(dashboards.length, 2);
   assert.equal(dashboards[0].bucketId, 31662);
-  assert.equal(dashboards[0].acc, 82);
+  assert.equal(dashboards[0].accuracy, 82);
   assert.equal(dashboards[1].bucketId, 31970);
-  assert.equal(dashboards[1].ingestTime, 30);
-  assert.equal(dashboards[1].claimProcTime, 120);
+  assert.equal(dashboards[1].ingestionTime, 30);
+  assert.equal(dashboards[1].processingTime, 120);
   // acc = round((100/3)*0.4 + (100/3)*0.3 + (100/3)*0.5) = round(40.0) = 40
-  assert.equal(dashboards[1].acc, 40);
+  assert.equal(dashboards[1].accuracy, 40);
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {
@@ -135,7 +134,7 @@ test('scoreDashboard reports a claim whose eval result errored (no response/grad
   // so there's no bucketId to report — the error text is the only record of what happened.
   assert.equal(dashboards[0].bucketId, undefined);
   assert.match(dashboards[0].error, /500 boom/);
-  assert.equal(dashboards[0].ingestTime, undefined);
+  assert.equal(dashboards[0].ingestionTime, undefined);
 });
 
 test('scoreDashboard reports a claim with a NaN accuracy score (missing named score) as an error entry, not a thrown exception', () => {
@@ -209,7 +208,7 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
   assert.match(dashboards[0].error, /INGESTION model is not found/);
   assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].error, undefined);
-  assert.equal(dashboards[1].acc, 40);
+  assert.equal(dashboards[1].accuracy, 40);
 });
 
 test('scoreDashboard reports full scores for a claim that has namedScores even though promptfoo marked it as errored (an assertion failed its own pass bar)', () => {
@@ -248,10 +247,10 @@ test('scoreDashboard reports full scores for a claim that has namedScores even t
 
   assert.equal(dashboards.length, 1);
   assert.equal(dashboards[0].bucketId, 31994);
-  assert.equal(dashboards[0].ingestTime, 30);
-  assert.equal(dashboards[0].claimProcTime, 120);
+  assert.equal(dashboards[0].ingestionTime, 30);
+  assert.equal(dashboards[0].processingTime, 120);
   // acc = round((100/3)*0.629 + (100/3)*0.571 + (100/3)*0.7) = round(63.33...) = 63
-  assert.equal(dashboards[0].acc, 63);
+  assert.equal(dashboards[0].accuracy, 63);
   assert.equal(dashboards[0].error, undefined);
 });
 

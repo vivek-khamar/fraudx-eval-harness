@@ -22,19 +22,19 @@ function scoreDashboard(resultsFilePath) {
     const output = result.response.output;
     const namedScores = result.gradingResult.namedScores;
 
-    const ingestTime = output.ingestion.timeMs / 1000;
-    const claimProcTime = output.processing.timeMs / 1000;
+    const ingestionTime = output.ingestion.timeMs / 1000;
+    const processingTime = output.processing.timeMs / 1000;
 
-    const acc = Math.round(
+    const accuracy = Math.round(
       (100 / 3) * namedScores.riskStatusMatch +
       (100 / 3) * namedScores.answerContentMatch +
       (100 / 3) * namedScores.report_quality
     );
-    if (Number.isNaN(acc)) {
+    if (Number.isNaN(accuracy)) {
       return { bucketId, error: 'Computed accuracy score is NaN — a named score is missing from the results file' };
     }
 
-    return { bucketId, ingestTime, claimProcTime, acc, entAcc: null };
+    return { bucketId, ingestionTime, processingTime, accuracy };
   });
 }
 
