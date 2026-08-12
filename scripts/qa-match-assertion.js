@@ -23,11 +23,10 @@ function buildAnswerContentRubric(expectedQa, actualQuestions) {
   });
 
   return [
-    "The output above lists report.questions, each with a predefinedQuestionId and an answer.",
-    'For each of the following expected question/answer pairs, judge whether the model answer\'s',
-    'content and reasoning semantically match the expected answer below (exact wording does not',
-    'matter, meaning does). Then return the fraction of pairs that match as a single number',
-    'between 0 and 1 — output only that number.',
+    'The pairs below list each predefined question, its expected answer, and the model\'s actual answer.',
+    'For each pair, judge whether the model answer\'s content and reasoning semantically match the',
+    'expected answer (exact wording does not matter, meaning does). Report the fraction of pairs that match',
+    'as the `score` field of your JSON response, between 0 and 1.',
     '',
     ...pairs,
   ].join('\n');
@@ -42,7 +41,7 @@ async function qaMatchAssertion(output, context) {
   const rubric = buildAnswerContentRubric(expectedQa, actualQuestions);
   const llmOutput = JSON.stringify(actualQuestions);
   const grading = context.test && context.test.options;
-  const rubricResult = await promptfoo.matchesLlmRubric(rubric, llmOutput, grading, context.vars);
+  const rubricResult = await promptfoo.assertions.matchesLlmRubric(rubric, llmOutput, grading, context.vars, undefined, { throwOnError: true });
   const answerContentMatch = rubricResult.score;
 
   const score = (riskStatusMatch + answerContentMatch) / 2;

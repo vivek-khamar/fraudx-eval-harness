@@ -20,15 +20,27 @@ document-ingestion + report pipeline and scores each against a human-verified an
   just fields on the provider's output, already timed by the time promptfoo sees
   them. `scripts/score-dashboard.js` reports them as-is — no budget or percentage
   math, just the raw millisecond values.
-- **Accuracy is graded inside promptfoo**, via two assertions applied to every test case (one per golden claim):
-  - `qa_match` (deterministic `javascript`) checks that each answer's `riskStatus` exactly matches
-    the gold `expectedRiskStatus`, over all 35 questions.
+- **Accuracy is graded inside promptfoo**, via one assertion (`qa_match`) producing two named
+  sub-scores, plus a separate `report_quality` assertion, applied to every test case (one per
+  golden claim):
+  - `qa_match` (`javascript`, `scripts/qa-match-assertion.js`) computes two independent signals
+    and reports both as named scores from a single assertion:
+    - `riskStatusMatch` (deterministic): the fraction of the 35 predefined questions whose
+      `riskStatus` exactly matches the gold `expectedRiskStatus`.
+    - `answerContentMatch` (LLM-graded): one rubric call per claim — not per question — that
+      judges every question's actual answer text against its gold `expectedAnswerSummary` for
+      semantic (not exact-wording) match, and returns the fraction that match.
+    The assertion's own score is the average of the two; `pass` defaults to `score > 0` unless
+    a `threshold` is set on the `qa_match` assert entry in `promptfooconfig.yaml`.
   - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary and
     `citedDocumentsText` (fetched by `provider.js`, never from the answer key — see below) on
     completeness, clinical correctness, missing information, and groundedness (whether every claim
     in the summary is actually supported by the cited source text, with no hallucination) — a
     single 0–1 score covering all of that.
-  `scripts/score-dashboard.js` combines them: `acc = round(50×qa_match + 50×report_quality)`.
+  `scripts/score-dashboard.js` combines all three as equal thirds:
+  `acc = round((100/3)×riskStatusMatch + (100/3)×answerContentMatch + (100/3)×report_quality)`.
+  `acc` numbers from before this scoring change are not directly comparable to `acc` numbers
+  after it — the weighting and underlying signals both changed.
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
 - **`provider.js` fetches the text of every document the real report actually cites** (not the

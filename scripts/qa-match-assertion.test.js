@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const promptfoo = require('promptfoo');
 const qaMatchAssertion = require('./qa-match-assertion');
-const { computeRiskStatusMatch } = require('./qa-match-assertion');
+const { computeRiskStatusMatch, buildAnswerContentRubric } = require('./qa-match-assertion');
 
 test('computeRiskStatusMatch returns the fraction of matching risk determinations', () => {
   const expectedQa = [
@@ -29,8 +29,6 @@ test('computeRiskStatusMatch returns 0 for a question missing from the real repo
   const output = { report: { questions: [] } };
   assert.equal(computeRiskStatusMatch(output, expectedQa), 0);
 });
-
-const { buildAnswerContentRubric } = require('./qa-match-assertion');
 
 test('buildAnswerContentRubric embeds every expected question, its expected answer, and the matching actual answer', () => {
   const expectedQa = [
@@ -58,10 +56,11 @@ test('buildAnswerContentRubric marks a question missing from the actual report a
 });
 
 function mockMatchesLlmRubric(t, impl) {
-  const original = promptfoo.matchesLlmRubric;
-  promptfoo.matchesLlmRubric = impl;
+  const original = promptfoo.assertions.matchesLlmRubric;
+  assert.equal(typeof original, 'function', 'mock target must already exist — matchesLlmRubric moved or was renamed');
+  promptfoo.assertions.matchesLlmRubric = impl;
   t.after(() => {
-    promptfoo.matchesLlmRubric = original;
+    promptfoo.assertions.matchesLlmRubric = original;
   });
 }
 
