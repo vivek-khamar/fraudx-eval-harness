@@ -25,7 +25,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
   golden claim):
   - `qa_match` (`javascript`, `scripts/qa-match-assertion.js`) computes two independent signals
     and reports both as named scores from a single assertion:
-    - `riskStatusMatch` (deterministic): the fraction of the 35 predefined questions whose
+    - `riskStatusMatch` (deterministic): the fraction of that claim's predefined questions whose
       `riskStatus` exactly matches the gold `expectedRiskStatus`.
     - `answerContentMatch` (LLM-graded): one rubric call per claim — not per question — that
       judges every question's actual answer text against its gold `expectedAnswerSummary` for
