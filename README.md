@@ -61,7 +61,11 @@ npm run eval
   `npm run score`. `--no-cache` is required — promptfoo caches provider responses
   by default, and a cached "response" would mean `provider.js` never actually
   calls your endpoint on a re-run, silently returning stale timing data that would
-  make a real regression invisible.
+  make a real regression invisible. `--max-concurrency 1` runs multiple golden
+  claims one at a time, not in parallel — the real platform has shared,
+  account-level ingestion limits (e.g. a cap on concurrently-ingesting files),
+  so running claims concurrently risks them contending with each other for that
+  same quota.
 - `npm run score` reads `results.json` and prints one dashboard object per claim:
 
 ```json
