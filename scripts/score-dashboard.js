@@ -25,7 +25,11 @@ function scoreDashboard(resultsFilePath) {
     const ingestTime = output.ingestion.timeMs / 1000;
     const claimProcTime = output.processing.timeMs / 1000;
 
-    const acc = Math.round(50 * namedScores.qa_match + 50 * namedScores.report_quality);
+    const acc = Math.round(
+      (100 / 3) * namedScores.riskStatusMatch +
+      (100 / 3) * namedScores.answerContentMatch +
+      (100 / 3) * namedScores.report_quality
+    );
     if (Number.isNaN(acc)) {
       return { bucketId, error: 'Computed accuracy score is NaN — a named score is missing from the results file' };
     }

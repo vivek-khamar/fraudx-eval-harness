@@ -15,8 +15,9 @@ test('scoreDashboard reads results.json and computes all four dashboard numbers 
   // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported in seconds, no budget scoring.
   assert.equal(dashboard.ingestTime, 60);
   assert.equal(dashboard.claimProcTime, 300);
-  // acc = round(50*qa_match + 50*report_quality) = round(50*0.9 + 50*0.85) = round(87.5) = 88
-  assert.equal(dashboard.acc, 88);
+  // acc = round((100/3)*riskStatusMatch + (100/3)*answerContentMatch + (100/3)*report_quality)
+  //     = round((100/3)*0.9 + (100/3)*0.7 + (100/3)*0.85) = round(81.666...) = 82
+  assert.equal(dashboard.acc, 82);
   assert.equal(dashboard.entAcc, null);
 });
 
@@ -41,7 +42,8 @@ test('scoreDashboard reports ingestTime and claimProcTime independently, in seco
               pass: true,
               score: 1,
               namedScores: {
-                qa_match: 0.9,
+                riskStatusMatch: 0.9,
+                answerContentMatch: 0.7,
                 report_quality: 0.85,
               },
             },
@@ -74,7 +76,7 @@ test('scoreDashboard scores every claim in results.json independently, not just 
                 report: { bucketId: 31662, summary: 's', qa: [] },
               },
             },
-            gradingResult: { pass: true, score: 1, namedScores: { qa_match: 0.9, report_quality: 0.85 } },
+            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.9, answerContentMatch: 0.7, report_quality: 0.85 } },
           },
           {
             response: {
@@ -84,7 +86,7 @@ test('scoreDashboard scores every claim in results.json independently, not just 
                 report: { bucketId: 31970, summary: 's', qa: [] },
               },
             },
-            gradingResult: { pass: true, score: 1, namedScores: { qa_match: 0.4, report_quality: 0.5 } },
+            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.4, answerContentMatch: 0.3, report_quality: 0.5 } },
           },
         ],
       },
@@ -95,12 +97,12 @@ test('scoreDashboard scores every claim in results.json independently, not just 
 
   assert.equal(dashboards.length, 2);
   assert.equal(dashboards[0].bucketId, 31662);
-  assert.equal(dashboards[0].acc, 88);
+  assert.equal(dashboards[0].acc, 82);
   assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].ingestTime, 30);
   assert.equal(dashboards[1].claimProcTime, 120);
-  // acc = round(50*0.4 + 50*0.5) = round(45) = 45
-  assert.equal(dashboards[1].acc, 45);
+  // acc = round((100/3)*0.4 + (100/3)*0.3 + (100/3)*0.5) = round(40.0) = 40
+  assert.equal(dashboards[1].acc, 40);
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {
@@ -157,7 +159,8 @@ test('scoreDashboard reports a claim with a NaN accuracy score (missing named sc
               pass: false,
               score: 0,
               namedScores: {
-                qa_match: 0.9,
+                riskStatusMatch: 0.9,
+                answerContentMatch: 0.8,
                 // report_quality is missing
               },
             },
@@ -192,7 +195,7 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
                 report: { bucketId: 31970, summary: 's', qa: [] },
               },
             },
-            gradingResult: { pass: true, score: 1, namedScores: { qa_match: 0.4, report_quality: 0.5 } },
+            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.4, answerContentMatch: 0.3, report_quality: 0.5 } },
           },
         ],
       },
@@ -206,7 +209,7 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
   assert.match(dashboards[0].error, /INGESTION model is not found/);
   assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].error, undefined);
-  assert.equal(dashboards[1].acc, 45);
+  assert.equal(dashboards[1].acc, 40);
 });
 
 test('scoreDashboard reports the bucketId of a claim whose provider call succeeded but grading errored', () => {
