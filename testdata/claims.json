@@ -5,16 +5,6 @@
     "claimCategoryId": 23,
     "ingestionModelId": 1,
     "processingModelId": 9,
-    "tags": [
-      {
-        "tagId": 3,
-        "tagValueId": 17
-      },
-      {
-        "tagId": 5,
-        "tagValueId": 13
-      }
-    ],
     "summary": "Jose Briones, born April 14, 1985, filed a worker’s compensation claim (WCB #: G275-8261, Carrier Case#: 72548647-373 [[0], [2], [3]]) following an incident on March 16, 2020, while employed as a Construction Worker at OneTeam Restoration, Inc.. Mr. Briones alleges he fell approximately 9 feet backwards while reaching for a bucket, resulting in injuries to his head, neck, mid-back, lower back, bilateral shoulders, hips, knees, and ankles. He was reportedly wearing a helmet at the time of the fall and was admitted to St. Barnabas Medical Center for approximately 8 days. A medical claim form (form number 1500 (02-12)) submitted to the New York State Insurance Fund (NYSIF) indicates the condition is *not* related to employment. However, a separate document, a Notice of Objection to a Payment of a Bill for Treatment Provided, identifies NYSIF as the insurer and lists the claim number as 72548647-373. The patient’s address is listed as 37 41 79 Street, Jackson Heights, NY 11372 while another document lists his address as 764B East 149th Street 2, Bronx, NY 10455. An independent neurologic evaluation was conducted on January 5, 2024, by Santoshi Billakota, MD, at the request of the insurer. Dr. Billakota notes the claimant presented for reported injuries including a Traumatic Brain Injury (TBI) and Post-Concussion Syndrome (PCS). The evaluation was attended by Mr. Briones, his legal representative Matthew Johnson, and an interpreter Nelly Vega. A medical billing objection form identifies Shiarree S Evaristo as the claimant’s healthcare provider. The form also indicates a claim admin claim number of 72548647-373 and the insurer ID as W204002. The last four digits of the claimant’s Social Security Number are listed as 5298.",
     "questions": [
       {
