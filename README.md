@@ -6,7 +6,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
 ## Design
 
 - **The provider is blind to the answer key.** `provider.js` only ever reads
-  `context.vars.claimId` and `context.vars.bucket`. It never touches
+  `context.vars.bucket`. It never touches
   `context.vars.expected`. This is enforced by a unit test in `provider.test.js` —
   if the pipeline's retrieval context could ever see the gold answers, "accuracy"
   would be meaningless.

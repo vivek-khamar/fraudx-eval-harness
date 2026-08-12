@@ -1,6 +1,5 @@
 [
   {
-    "claimId": "FX-GOLD-5K-v1",
     "bucketId": 31662,
     "newClaimName": "promptfoo-golden-claim-eval",
     "claimCategoryId": 23,
@@ -343,7 +342,6 @@
     ]
   },
   {
-    "claimId": "FX-GOLD-G3128974-v1",
     "bucketId": 29914,
     "newClaimName": "promptfoo-golden-claim-eval-jumbo-canar",
     "claimCategoryId": 12,

@@ -2,7 +2,6 @@
   "results": {
     "results": [
       {
-        "vars": { "claimId": "FX-GOLD-5K-v1" },
         "response": {
           "output": {
             "ingestion": { "timeMs": 60000 },

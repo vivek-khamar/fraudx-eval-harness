@@ -22,7 +22,6 @@ function mockFraudxClient(t, overrides) {
 function fakeContext() {
   return {
     vars: {
-      claimId: 'FX-GOLD-5K-v1',
       bucket: {
         sourceBucketId: 31662,
         newClaim: { bucketName: 'x', claimCategoryId: 23, ingestionModelId: 1, processingModelId: 9, tags: [] },

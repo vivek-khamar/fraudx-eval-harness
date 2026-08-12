@@ -1,5 +1,5 @@
 prompts:
-  - "{{claimId}}"
+  - "{{bucket.sourceBucketId}}"
 
 providers:
   - id: file://provider.js

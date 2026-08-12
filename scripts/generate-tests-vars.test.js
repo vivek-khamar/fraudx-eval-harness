@@ -10,7 +10,6 @@ const { buildTestsVars, generateTestsVars } = require('./generate-tests-vars');
 
 function sampleClaim(overrides) {
   return {
-    claimId: 'FX-GOLD-5K-v1',
     bucketId: 31662,
     newClaimName: 'promptfoo-golden-claim-eval',
     claimCategoryId: 23,
@@ -36,7 +35,6 @@ test('buildTestsVars maps a flat claim into promptfoo test-case shape', () => {
   assert.deepEqual(result, [
     {
       vars: {
-        claimId: 'FX-GOLD-5K-v1',
         bucket: {
           sourceBucketId: 31662,
           newClaim: {
@@ -65,12 +63,12 @@ test('buildTestsVars maps a flat claim into promptfoo test-case shape', () => {
 });
 
 test('buildTestsVars maps multiple claims in order', () => {
-  const result = buildTestsVars([sampleClaim({ claimId: 'A' }), sampleClaim({ claimId: 'B' })]);
-  assert.deepEqual(result.map((t) => t.vars.claimId), ['A', 'B']);
+  const result = buildTestsVars([sampleClaim({ bucketId: 111 }), sampleClaim({ bucketId: 222 })]);
+  assert.deepEqual(result.map((t) => t.vars.bucket.sourceBucketId), [111, 222]);
 });
 
 test('buildTestsVars throws a clear error when the input is not an array', () => {
-  assert.throws(() => buildTestsVars({ claimId: 'x' }), /testdata\/claims\.json must contain an array of claim objects/);
+  assert.throws(() => buildTestsVars({ notAnArray: true }), /testdata\/claims\.json must contain an array of claim objects/);
 });
 
 test('generateTestsVars reads claims.json and writes a re-parseable tests.vars.yaml', (t) => {
@@ -79,13 +77,13 @@ test('generateTestsVars reads claims.json and writes a re-parseable tests.vars.y
   const outputPath = path.join(tmpDir, 'tests.vars.yaml');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
-  fs.writeFileSync(claimsPath, JSON.stringify([sampleClaim(), sampleClaim({ claimId: 'SECOND' })]));
+  fs.writeFileSync(claimsPath, JSON.stringify([sampleClaim(), sampleClaim({ bucketId: 99999 })]));
   generateTestsVars(claimsPath, outputPath);
 
   const written = yaml.load(fs.readFileSync(outputPath, 'utf8'));
   assert.equal(written.length, 2);
-  assert.equal(written[0].vars.claimId, 'FX-GOLD-5K-v1');
-  assert.equal(written[1].vars.claimId, 'SECOND');
+  assert.equal(written[0].vars.bucket.sourceBucketId, 31662);
+  assert.equal(written[1].vars.bucket.sourceBucketId, 99999);
 });
 
 test('generateTestsVars output file starts with a do-not-edit header', (t) => {

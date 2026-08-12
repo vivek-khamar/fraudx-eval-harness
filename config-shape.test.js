@@ -35,7 +35,6 @@ test('tests.vars.yaml declares one test case per golden claim bucket fixture', (
   assert.ok(Array.isArray(testCases));
   assert.ok(testCases.length >= 1);
   for (const testCase of testCases) {
-    assert.equal(typeof testCase.vars.claimId, 'string');
     assert.ok(typeof testCase.vars.bucket === 'object' && testCase.vars.bucket !== null, 'vars.bucket must be an inline object, not a file:// reference');
     assert.ok(typeof testCase.vars.expected === 'object' && testCase.vars.expected !== null, 'vars.expected must be an inline object, not a file:// reference');
   }
@@ -66,12 +65,12 @@ test('every test case\'s vars.expected has a summary and at least one predefined
     assert.ok(expected.summarySynopsis.length > 0);
 
     assert.ok(Array.isArray(expected.qa));
-    assert.ok(expected.qa.length > 0, `vars.expected.qa must have at least one entry (claimId: ${testCase.vars.claimId})`);
+    assert.ok(expected.qa.length > 0, `vars.expected.qa must have at least one entry (sourceBucketId: ${testCase.vars.bucket.sourceBucketId})`);
 
     const seenIds = new Set();
     for (const entry of expected.qa) {
       assert.equal(typeof entry.predefinedQuestionId, 'number');
-      assert.ok(!seenIds.has(entry.predefinedQuestionId), `duplicate predefinedQuestionId ${entry.predefinedQuestionId} (claimId: ${testCase.vars.claimId})`);
+      assert.ok(!seenIds.has(entry.predefinedQuestionId), `duplicate predefinedQuestionId ${entry.predefinedQuestionId} (sourceBucketId: ${testCase.vars.bucket.sourceBucketId})`);
       seenIds.add(entry.predefinedQuestionId);
       assert.equal(typeof entry.question, 'string');
       assert.equal(typeof entry.expectedAnswerSummary, 'string');

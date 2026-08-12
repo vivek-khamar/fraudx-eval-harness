@@ -10,7 +10,6 @@ function buildTestsVars(claims) {
   }
   return claims.map((claim) => ({
     vars: {
-      claimId: claim.claimId,
       bucket: {
         sourceBucketId: claim.bucketId,
         newClaim: {
