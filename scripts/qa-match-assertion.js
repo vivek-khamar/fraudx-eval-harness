@@ -1,5 +1,7 @@
 'use strict';
 
+const promptfoo = require('promptfoo');
+
 function computeRiskStatusMatch(output, expectedQa) {
   const actualQuestions = output.report.questions;
   const matched = expectedQa.filter((q) => {
@@ -31,5 +33,34 @@ function buildAnswerContentRubric(expectedQa, actualQuestions) {
   ].join('\n');
 }
 
+async function qaMatchAssertion(output, context) {
+  const expectedQa = context.vars.expected.qa;
+  const actualQuestions = output.report.questions;
+
+  const riskStatusMatch = computeRiskStatusMatch(output, expectedQa);
+
+  const rubric = buildAnswerContentRubric(expectedQa, actualQuestions);
+  const llmOutput = JSON.stringify(actualQuestions);
+  const grading = context.test && context.test.options;
+  const rubricResult = await promptfoo.matchesLlmRubric(rubric, llmOutput, grading, context.vars);
+  const answerContentMatch = rubricResult.score;
+
+  const score = (riskStatusMatch + answerContentMatch) / 2;
+
+  const qaMatchAssert = context.test && Array.isArray(context.test.assert)
+    ? context.test.assert.find((a) => a.metric === 'qa_match')
+    : undefined;
+  const threshold = qaMatchAssert && qaMatchAssert.threshold;
+  const pass = threshold === undefined ? score > 0 : score >= threshold;
+
+  return {
+    pass,
+    score,
+    reason: `riskStatusMatch=${riskStatusMatch}, answerContentMatch=${answerContentMatch}`,
+    namedScores: { riskStatusMatch, answerContentMatch },
+  };
+}
+
+module.exports = qaMatchAssertion;
 module.exports.computeRiskStatusMatch = computeRiskStatusMatch;
 module.exports.buildAnswerContentRubric = buildAnswerContentRubric;

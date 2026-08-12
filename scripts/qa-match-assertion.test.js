@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const promptfoo = require('promptfoo');
+const qaMatchAssertion = require('./qa-match-assertion');
 const { computeRiskStatusMatch } = require('./qa-match-assertion');
 
 test('computeRiskStatusMatch returns the fraction of matching risk determinations', () => {
@@ -53,4 +55,81 @@ test('buildAnswerContentRubric marks a question missing from the actual report a
   const rubric = buildAnswerContentRubric(expectedQa, actualQuestions);
 
   assert.match(rubric, /NO ANSWER PROVIDED/);
+});
+
+function mockMatchesLlmRubric(t, impl) {
+  const original = promptfoo.matchesLlmRubric;
+  promptfoo.matchesLlmRubric = impl;
+  t.after(() => {
+    promptfoo.matchesLlmRubric = original;
+  });
+}
+
+function fakeContext(overrides) {
+  return {
+    vars: {
+      expected: {
+        qa: [
+          { predefinedQuestionId: 1, question: 'Q1?', expectedAnswerSummary: 'A1', expectedRiskStatus: 'RISK_DETECTED' },
+          { predefinedQuestionId: 2, question: 'Q2?', expectedAnswerSummary: 'A2', expectedRiskStatus: 'UNSURE' },
+          { predefinedQuestionId: 3, question: 'Q3?', expectedAnswerSummary: 'A3', expectedRiskStatus: 'RISK_DETECTED' },
+        ],
+      },
+    },
+    test: { assert: [{ metric: 'qa_match' }], options: { provider: 'anthropic:messages:claude-sonnet-4-5' } },
+    ...overrides,
+  };
+}
+
+function fakeOutput() {
+  return {
+    report: {
+      questions: [
+        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'ans1' },
+        { predefinedQuestionId: 2, riskStatus: 'RISK_DETECTED', answer: 'ans2' }, // mismatch vs UNSURE
+        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED', answer: 'ans3' },
+      ],
+    },
+  };
+}
+
+test('qaMatchAssertion combines riskStatusMatch and answerContentMatch into namedScores and an averaged score', async (t) => {
+  mockMatchesLlmRubric(t, async () => ({ pass: true, score: 0.75, reason: 'llm reason' }));
+
+  const result = await qaMatchAssertion(fakeOutput(), fakeContext());
+
+  assert.equal(result.namedScores.riskStatusMatch, 2 / 3);
+  assert.equal(result.namedScores.answerContentMatch, 0.75);
+  assert.equal(result.score, (2 / 3 + 0.75) / 2);
+  assert.equal(result.pass, true); // score > 0, no threshold configured
+});
+
+test('qaMatchAssertion passes context.test.options through to matchesLlmRubric as the grading config', async (t) => {
+  let capturedGrading;
+  mockMatchesLlmRubric(t, async (rubric, llmOutput, grading) => {
+    capturedGrading = grading;
+    return { pass: true, score: 1, reason: 'ok' };
+  });
+
+  await qaMatchAssertion(fakeOutput(), fakeContext());
+
+  assert.deepEqual(capturedGrading, { provider: 'anthropic:messages:claude-sonnet-4-5' });
+});
+
+test('qaMatchAssertion fails when score is below an explicit threshold on the qa_match assert entry', async (t) => {
+  mockMatchesLlmRubric(t, async () => ({ pass: true, score: 0.1, reason: 'low' }));
+
+  const context = fakeContext({ test: { assert: [{ metric: 'qa_match', threshold: 0.9 }], options: {} } });
+  const result = await qaMatchAssertion(fakeOutput(), context);
+
+  // score = (2/3 + 0.1) / 2 ≈ 0.383, below threshold 0.9
+  assert.equal(result.pass, false);
+});
+
+test('qaMatchAssertion propagates errors from matchesLlmRubric instead of swallowing them', async (t) => {
+  mockMatchesLlmRubric(t, async () => {
+    throw new Error('grader provider timed out');
+  });
+
+  await assert.rejects(() => qaMatchAssertion(fakeOutput(), fakeContext()), /grader provider timed out/);
 });
