@@ -212,6 +212,49 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
   assert.equal(dashboards[1].acc, 40);
 });
 
+test('scoreDashboard reports full scores for a claim that has namedScores even though promptfoo marked it as errored (an assertion failed its own pass bar)', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const assertionFailed = path.join(os.tmpdir(), 'assertion-failed-results.json');
+  fs.writeFileSync(
+    assertionFailed,
+    JSON.stringify({
+      results: {
+        results: [
+          {
+            // promptfoo sets top-level `error` to a human-readable failure summary whenever any
+            // assertion's own `pass` is false (e.g. report_quality's LLM judge decided the summary
+            // was incomplete) — even though the pipeline succeeded and full namedScores exist.
+            error: 'The real summary omits several key elements from the gold summary.',
+            response: {
+              output: {
+                ingestion: { timeMs: 30000 },
+                processing: { timeMs: 120000 },
+                report: { bucketId: 31994, summary: 's', qa: [] },
+              },
+            },
+            gradingResult: {
+              pass: false,
+              score: 0.65,
+              namedScores: { riskStatusMatch: 0.629, answerContentMatch: 0.571, report_quality: 0.7 },
+            },
+          },
+        ],
+      },
+    })
+  );
+
+  const dashboards = scoreDashboard(assertionFailed);
+
+  assert.equal(dashboards.length, 1);
+  assert.equal(dashboards[0].bucketId, 31994);
+  assert.equal(dashboards[0].ingestTime, 30);
+  assert.equal(dashboards[0].claimProcTime, 120);
+  // acc = round((100/3)*0.629 + (100/3)*0.571 + (100/3)*0.7) = round(63.33...) = 63
+  assert.equal(dashboards[0].acc, 63);
+  assert.equal(dashboards[0].error, undefined);
+});
+
 test('scoreDashboard reports the bucketId of a claim whose provider call succeeded but grading errored', () => {
   const fs = require('node:fs');
   const os = require('node:os');

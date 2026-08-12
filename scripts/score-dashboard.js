@@ -15,7 +15,7 @@ function scoreDashboard(resultsFilePath) {
 
   return results.map((result) => {
     const bucketId = result.response?.output?.report?.bucketId;
-    if (result.error || !result.response?.output || !result.gradingResult?.namedScores) {
+    if (!result.response?.output || !result.gradingResult?.namedScores) {
       return { bucketId, error: result.error || 'missing response output or grading result' };
     }
 
