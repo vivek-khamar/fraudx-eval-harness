@@ -346,19 +346,9 @@
     "claimId": "FX-GOLD-G3128974-v1",
     "bucketId": 29914,
     "newClaimName": "promptfoo-golden-claim-eval-jumbo-canar",
-    "claimCategoryId": 23,
-    "ingestionModelId": 1,
-    "processingModelId": 9,
-    "tags": [
-      {
-        "tagId": 3,
-        "tagValueId": 17
-      },
-      {
-        "tagId": 5,
-        "tagValueId": 13
-      }
-    ],
+    "claimCategoryId": 12,
+    "ingestionModelId": 4616,
+    "processingModelId": 4616,
     "summary": "The provided records detail two distinct workers' compensation claims. The first involves claimant Danny P. Jumbo Canar (WCB Case #G3128974), who alleges a \"Multiple Head Injury\" occurring on September 3, 2021 . The employer is identified as Capital Concrete NY Inc. (also referenced as Capital Concrete NY USA LLS) , with Accredited Surety and Casualty Company, Inc. serving as the primary insurer . Administrative records indicate the case has been contested, with the insurance carrier controverting the claim . A virtual hearing on August 18, 2022, resulted in the case being continued to address disputes regarding the causal relationship of the accident to injuries of the neck, back, right shoulder, and knees . Investigative red flags include conflicting residential addresses for the claimant, listed as 48 Monroe Street, Garfield, NJ  and 237 Clay St, Hackensack, NJ . The second claim involves Carleily Estela-Huaman (WCB Case #G3222683), who alleges an injury on January 26, 2022 . The claimant is associated with two different employers: Leeding Builders Group LLC and StructureTech New York, Inc. The insurer is identified as Zurich American Insurance Co. (or American Zurich Ins. Co.). Medical records from George Davydov of Hudson Pro Orthopaedics list diagnoses including rotator cuff strain, impingement syndrome, and adhesive capsulitis of the right shoulder. Records indicate a \"2nd post op\" appointment on April 8, 2024, though the insurer denied several authorization requests for post-operative rehabilitation citing \"unverified total number of sessions\". Further billing disputes are evident in a Form C-8.4, where the insurer refused to pay $17.56 of an $87.80 bill from George Davydov, claiming the charges were not in accordance with \"Ground Rules limitation\".",
     "questions": [
       {
