@@ -11,7 +11,7 @@ test('scoreDashboard reads results.json and computes all four dashboard numbers 
 
   assert.equal(dashboards.length, 1);
   const dashboard = dashboards[0];
-  assert.equal(dashboard.claimId, 'FX-GOLD-5K-v1');
+  assert.equal(dashboard.bucketId, 31662);
   // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported in seconds, no budget scoring.
   assert.equal(dashboard.ingestTime, 60);
   assert.equal(dashboard.claimProcTime, 300);
@@ -30,12 +30,11 @@ test('scoreDashboard reports ingestTime and claimProcTime independently, in seco
       results: {
         results: [
           {
-            vars: { claimId: 'FX-GOLD-5K-v1' },
             response: {
               output: {
                 ingestion: { timeMs: 401500 },
                 processing: { timeMs: 300000 },
-                report: { summary: 's', qa: [] },
+                report: { bucketId: 31662, summary: 's', qa: [] },
               },
             },
             gradingResult: {
@@ -68,23 +67,21 @@ test('scoreDashboard scores every claim in results.json independently, not just 
       results: {
         results: [
           {
-            vars: { claimId: 'FX-GOLD-5K-v1' },
             response: {
               output: {
                 ingestion: { timeMs: 60000 },
                 processing: { timeMs: 300000 },
-                report: { summary: 's', qa: [] },
+                report: { bucketId: 31662, summary: 's', qa: [] },
               },
             },
             gradingResult: { pass: true, score: 1, namedScores: { qa_match: 0.9, report_quality: 0.85 } },
           },
           {
-            vars: { claimId: 'FX-GOLD-G3128974-v1' },
             response: {
               output: {
                 ingestion: { timeMs: 30000 },
                 processing: { timeMs: 120000 },
-                report: { summary: 's', qa: [] },
+                report: { bucketId: 31970, summary: 's', qa: [] },
               },
             },
             gradingResult: { pass: true, score: 1, namedScores: { qa_match: 0.4, report_quality: 0.5 } },
@@ -97,9 +94,9 @@ test('scoreDashboard scores every claim in results.json independently, not just 
   const dashboards = scoreDashboard(fixturePath);
 
   assert.equal(dashboards.length, 2);
-  assert.equal(dashboards[0].claimId, 'FX-GOLD-5K-v1');
+  assert.equal(dashboards[0].bucketId, 31662);
   assert.equal(dashboards[0].acc, 88);
-  assert.equal(dashboards[1].claimId, 'FX-GOLD-G3128974-v1');
+  assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].ingestTime, 30);
   assert.equal(dashboards[1].claimProcTime, 120);
   // acc = round(50*0.4 + 50*0.5) = round(45) = 45
@@ -124,7 +121,6 @@ test('scoreDashboard reports a claim whose eval result errored (no response/grad
       results: {
         results: [
           {
-            vars: { claimId: 'FX-GOLD-5K-v1' },
             error: 'Ingestion failed for FX-GOLD-5K-v1: 500 boom',
           },
         ],
@@ -133,7 +129,9 @@ test('scoreDashboard reports a claim whose eval result errored (no response/grad
   );
   const dashboards = scoreDashboard(errored);
   assert.equal(dashboards.length, 1);
-  assert.equal(dashboards[0].claimId, 'FX-GOLD-5K-v1');
+  // No response.output was ever returned (the provider threw before fetching the report),
+  // so there's no bucketId to report — the error text is the only record of what happened.
+  assert.equal(dashboards[0].bucketId, undefined);
   assert.match(dashboards[0].error, /500 boom/);
   assert.equal(dashboards[0].ingestTime, undefined);
 });
@@ -148,12 +146,11 @@ test('scoreDashboard reports a claim with a NaN accuracy score (missing named sc
       results: {
         results: [
           {
-            vars: { claimId: 'FX-GOLD-5K-v1' },
             response: {
               output: {
                 ingestion: { timeMs: 60000 },
                 processing: { timeMs: 300000 },
-                report: { summary: 's', qa: [] },
+                report: { bucketId: 31662, summary: 's', qa: [] },
               },
             },
             gradingResult: {
@@ -171,7 +168,7 @@ test('scoreDashboard reports a claim with a NaN accuracy score (missing named sc
   );
   const dashboards = scoreDashboard(missingScore);
   assert.equal(dashboards.length, 1);
-  assert.equal(dashboards[0].claimId, 'FX-GOLD-5K-v1');
+  assert.equal(dashboards[0].bucketId, 31662);
   assert.match(dashboards[0].error, /NaN/);
 });
 
@@ -185,16 +182,14 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
       results: {
         results: [
           {
-            vars: { claimId: 'FX-GOLD-5K-v1' },
             error: 'Creating a claim failed: 404 INGESTION model is not found.',
           },
           {
-            vars: { claimId: 'FX-GOLD-G3128974-v1' },
             response: {
               output: {
                 ingestion: { timeMs: 30000 },
                 processing: { timeMs: 120000 },
-                report: { summary: 's', qa: [] },
+                report: { bucketId: 31970, summary: 's', qa: [] },
               },
             },
             gradingResult: { pass: true, score: 1, namedScores: { qa_match: 0.4, report_quality: 0.5 } },
@@ -207,9 +202,42 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
   const dashboards = scoreDashboard(mixed);
 
   assert.equal(dashboards.length, 2);
-  assert.equal(dashboards[0].claimId, 'FX-GOLD-5K-v1');
+  assert.equal(dashboards[0].bucketId, undefined);
   assert.match(dashboards[0].error, /INGESTION model is not found/);
-  assert.equal(dashboards[1].claimId, 'FX-GOLD-G3128974-v1');
+  assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].error, undefined);
   assert.equal(dashboards[1].acc, 45);
+});
+
+test('scoreDashboard reports the bucketId of a claim whose provider call succeeded but grading errored', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const gradingErrored = path.join(os.tmpdir(), 'grading-errored-results.json');
+  fs.writeFileSync(
+    gradingErrored,
+    JSON.stringify({
+      results: {
+        results: [
+          {
+            error: 'RateLimitExhaustedError: Rate limit exceeded for openai:gpt-5.1 after 4 attempts',
+            response: {
+              output: {
+                ingestion: { timeMs: 30000 },
+                processing: { timeMs: 120000 },
+                report: { bucketId: 31970, summary: 's', qa: [] },
+              },
+            },
+          },
+        ],
+      },
+    })
+  );
+
+  const dashboards = scoreDashboard(gradingErrored);
+
+  assert.equal(dashboards.length, 1);
+  // The pipeline itself succeeded (report.bucketId was fetched) — only grading failed —
+  // so the bucketId should still be reported even though this entry is an error overall.
+  assert.equal(dashboards[0].bucketId, 31970);
+  assert.match(dashboards[0].error, /RateLimitExhaustedError/);
 });

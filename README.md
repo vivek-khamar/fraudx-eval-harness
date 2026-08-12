@@ -67,14 +67,14 @@ npm run eval
 ```json
 [
   {
-    "claimId": "FX-GOLD-5K-v1",
+    "bucketId": 31662,
     "ingestTime": 71,
     "claimProcTime": 184,
     "acc": 94,
     "entAcc": null
   },
   {
-    "claimId": "FX-GOLD-G3128974-v1",
+    "bucketId": 31970,
     "ingestTime": 53,
     "claimProcTime": 96,
     "acc": 68,
@@ -82,6 +82,12 @@ npm run eval
   }
 ]
 ```
+
+`bucketId` identifies the real, newly-created FraudX bucket this run produced for that golden
+claim (read from `output.report.bucketId`, i.e. only available once the report was actually
+fetched) — not the golden claim's frozen source bucket. If the provider call failed before a
+report was ever fetched (e.g. claim creation itself failed), that entry has no `bucketId` at all;
+the `error` text is the only record of what happened.
 
 If a claim's provider call errored (e.g. a platform outage, a bad model ID for the current
 environment) or its accuracy score came out `NaN`, that claim's entry has an `error` field

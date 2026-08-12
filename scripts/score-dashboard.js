@@ -14,9 +14,9 @@ function scoreDashboard(resultsFilePath) {
   }
 
   return results.map((result) => {
-    const claimId = result.vars?.claimId;
+    const bucketId = result.response?.output?.report?.bucketId;
     if (result.error || !result.response?.output || !result.gradingResult?.namedScores) {
-      return { claimId, error: result.error || 'missing response output or grading result' };
+      return { bucketId, error: result.error || 'missing response output or grading result' };
     }
 
     const output = result.response.output;
@@ -27,10 +27,10 @@ function scoreDashboard(resultsFilePath) {
 
     const acc = Math.round(50 * namedScores.qa_match + 50 * namedScores.report_quality);
     if (Number.isNaN(acc)) {
-      return { claimId, error: 'Computed accuracy score is NaN — a named score is missing from the results file' };
+      return { bucketId, error: 'Computed accuracy score is NaN — a named score is missing from the results file' };
     }
 
-    return { claimId, ingestTime, claimProcTime, acc, entAcc: null };
+    return { bucketId, ingestTime, claimProcTime, acc, entAcc: null };
   });
 }
 

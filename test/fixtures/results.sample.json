@@ -8,6 +8,7 @@
             "ingestion": { "timeMs": 60000 },
             "processing": { "timeMs": 300000 },
             "report": {
+              "bucketId": 31662,
               "summary": "a generated summary",
               "qa": [
                 {
