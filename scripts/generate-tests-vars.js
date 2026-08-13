@@ -27,7 +27,6 @@ function buildTestsVars(claims) {
           question: q.question,
           expectedAnswerSummary: q.expectedAnswer,
           expectedRiskStatus: q.expectedRiskStatus,
-          expectedCitationFileNames: q.expectedCitations,
         })),
       },
     },

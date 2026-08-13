@@ -75,10 +75,6 @@ test('every test case\'s vars.expected has a summary and at least one predefined
       assert.equal(typeof entry.question, 'string');
       assert.equal(typeof entry.expectedAnswerSummary, 'string');
       assert.equal(typeof entry.expectedRiskStatus, 'string');
-      assert.ok(Array.isArray(entry.expectedCitationFileNames));
-      for (const fileName of entry.expectedCitationFileNames) {
-        assert.equal(typeof fileName, 'string');
-      }
     }
   }
 });
