@@ -11,27 +11,6 @@ function computeRiskStatusMatch(output, expectedQa) {
   return matched / expectedQa.length;
 }
 
-function buildAnswerContentRubric(expectedQa, actualQuestions) {
-  const pairs = expectedQa.map((q) => {
-    const actual = actualQuestions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
-    const actualAnswer = actual && actual.answer ? actual.answer : 'NO ANSWER PROVIDED';
-    return [
-      `Question ${q.predefinedQuestionId}: ${q.question}`,
-      `Expected answer: ${q.expectedAnswerSummary}`,
-      `Model answer: ${actualAnswer}`,
-    ].join('\n');
-  });
-
-  return [
-    'The pairs below list each predefined question, its expected answer, and the model\'s actual answer.',
-    'For each pair, judge whether the model answer\'s content and reasoning semantically match the',
-    'expected answer (exact wording does not matter, meaning does). Report the fraction of pairs that match',
-    'as the `score` field of your JSON response, between 0 and 1.',
-    '',
-    ...pairs,
-  ].join('\n');
-}
-
 function buildQuestionGradingPrompt(question, actualAnswer) {
   return [
     `Question: ${question.question}`,
@@ -63,11 +42,20 @@ async function qaMatchAssertion(output, context) {
 
   const riskStatusMatch = computeRiskStatusMatch(output, expectedQa);
 
-  const rubric = buildAnswerContentRubric(expectedQa, actualQuestions);
-  const llmOutput = JSON.stringify(actualQuestions);
-  const grading = context.test && context.test.options;
-  const rubricResult = await promptfoo.assertions.matchesLlmRubric(rubric, llmOutput, grading, context.vars, undefined, { throwOnError: true });
-  const answerContentMatch = rubricResult.score;
+  const provider = await promptfoo.loadApiProvider(context.test.options.provider);
+  const perQuestionBreakdown = [];
+  for (const q of expectedQa) {
+    const actual = actualQuestions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
+    const actualAnswer = actual && actual.answer ? actual.answer : 'NO ANSWER PROVIDED';
+    const prompt = buildQuestionGradingPrompt(q, actualAnswer);
+    const response = await provider.callApi(prompt);
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    const { matches, reason } = parseGraderVerdict(response.output);
+    perQuestionBreakdown.push({ predefinedQuestionId: q.predefinedQuestionId, question: q.question, actualAnswer, matches, reason });
+  }
+  const answerContentMatch = perQuestionBreakdown.filter((v) => v.matches).length / perQuestionBreakdown.length;
 
   const score = (riskStatusMatch + answerContentMatch) / 2;
 
@@ -82,11 +70,11 @@ async function qaMatchAssertion(output, context) {
     score,
     reason: `riskStatusMatch=${riskStatusMatch}, answerContentMatch=${answerContentMatch}`,
     namedScores: { riskStatusMatch, answerContentMatch },
+    perQuestionBreakdown,
   };
 }
 
 module.exports = qaMatchAssertion;
 module.exports.computeRiskStatusMatch = computeRiskStatusMatch;
-module.exports.buildAnswerContentRubric = buildAnswerContentRubric;
 module.exports.buildQuestionGradingPrompt = buildQuestionGradingPrompt;
 module.exports.parseGraderVerdict = parseGraderVerdict;

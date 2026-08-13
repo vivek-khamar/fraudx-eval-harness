@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const promptfoo = require('promptfoo');
 const qaMatchAssertion = require('./qa-match-assertion');
-const { computeRiskStatusMatch, buildAnswerContentRubric, buildQuestionGradingPrompt, parseGraderVerdict } = require('./qa-match-assertion');
+const { computeRiskStatusMatch, buildQuestionGradingPrompt, parseGraderVerdict } = require('./qa-match-assertion');
 
 test('computeRiskStatusMatch returns the fraction of matching risk determinations', () => {
   const expectedQa = [
@@ -28,31 +28,6 @@ test('computeRiskStatusMatch returns 0 for a question missing from the real repo
   const expectedQa = [{ predefinedQuestionId: 1, expectedRiskStatus: 'RISK_DETECTED' }];
   const output = { report: { questions: [] } };
   assert.equal(computeRiskStatusMatch(output, expectedQa), 0);
-});
-
-test('buildAnswerContentRubric embeds every expected question, its expected answer, and the matching actual answer', () => {
-  const expectedQa = [
-    { predefinedQuestionId: 1, question: 'Is there fraud?', expectedAnswerSummary: 'Yes, per doc X.' },
-  ];
-  const actualQuestions = [{ predefinedQuestionId: 1, answer: 'Yes, doc X confirms it.' }];
-
-  const rubric = buildAnswerContentRubric(expectedQa, actualQuestions);
-
-  assert.match(rubric, /Is there fraud\?/);
-  assert.match(rubric, /Yes, per doc X\./);
-  assert.match(rubric, /Yes, doc X confirms it\./);
-  assert.match(rubric, /fraction of pairs that match/);
-});
-
-test('buildAnswerContentRubric marks a question missing from the actual report as no answer provided', () => {
-  const expectedQa = [
-    { predefinedQuestionId: 99, question: 'Missing question?', expectedAnswerSummary: 'Some expected answer.' },
-  ];
-  const actualQuestions = [];
-
-  const rubric = buildAnswerContentRubric(expectedQa, actualQuestions);
-
-  assert.match(rubric, /NO ANSWER PROVIDED/);
 });
 
 test('buildQuestionGradingPrompt embeds the question, expected answer, and actual answer', () => {
@@ -84,12 +59,12 @@ test('parseGraderVerdict throws a clear error when matches or reason fields are 
   assert.throws(() => parseGraderVerdict('{"matches": true}'), /missing matches\/reason fields/);
 });
 
-function mockMatchesLlmRubric(t, impl) {
-  const original = promptfoo.assertions.matchesLlmRubric;
-  assert.equal(typeof original, 'function', 'mock target must already exist — matchesLlmRubric moved or was renamed');
-  promptfoo.assertions.matchesLlmRubric = impl;
+function mockLoadApiProvider(t, callApiImpl) {
+  const original = promptfoo.loadApiProvider;
+  assert.equal(typeof original, 'function', 'mock target must already exist — loadApiProvider moved or was renamed');
+  promptfoo.loadApiProvider = async () => ({ callApi: callApiImpl });
   t.after(() => {
-    promptfoo.assertions.matchesLlmRubric = original;
+    promptfoo.loadApiProvider = original;
   });
 }
 
@@ -121,43 +96,77 @@ function fakeOutput() {
   };
 }
 
-test('qaMatchAssertion combines riskStatusMatch and answerContentMatch into namedScores and an averaged score', async (t) => {
-  mockMatchesLlmRubric(t, async () => ({ pass: true, score: 0.75, reason: 'llm reason' }));
+test('qaMatchAssertion combines riskStatusMatch and answerContentMatch into namedScores and an averaged score, calling the grader once per question', async (t) => {
+  let callCount = 0;
+  mockLoadApiProvider(t, async () => {
+    callCount += 1;
+    const matches = callCount !== 3; // third question mismatches
+    return { output: JSON.stringify({ matches, reason: `reason ${callCount}` }) };
+  });
 
   const result = await qaMatchAssertion(fakeOutput(), fakeContext());
 
+  assert.equal(callCount, 3); // one call per question, not one batched call
   assert.equal(result.namedScores.riskStatusMatch, 2 / 3);
-  assert.equal(result.namedScores.answerContentMatch, 0.75);
-  assert.equal(result.score, (2 / 3 + 0.75) / 2);
-  assert.equal(result.pass, true); // score > 0, no threshold configured
+  assert.equal(result.namedScores.answerContentMatch, 2 / 3);
+  assert.equal(result.score, (2 / 3 + 2 / 3) / 2);
+  assert.equal(result.pass, true);
 });
 
-test('qaMatchAssertion passes context.test.options through to matchesLlmRubric as the grading config', async (t) => {
-  let capturedGrading;
-  mockMatchesLlmRubric(t, async (rubric, llmOutput, grading) => {
-    capturedGrading = grading;
-    return { pass: true, score: 1, reason: 'ok' };
+test('qaMatchAssertion returns one perQuestionBreakdown entry per question', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'looks right' }) }));
+
+  const result = await qaMatchAssertion(fakeOutput(), fakeContext());
+
+  assert.equal(result.perQuestionBreakdown.length, 3);
+  assert.deepEqual(result.perQuestionBreakdown[0], {
+    predefinedQuestionId: 1,
+    question: 'Q1?',
+    actualAnswer: 'ans1',
+    matches: true,
+    reason: 'looks right',
+  });
+});
+
+test('qaMatchAssertion grades a missing actual answer as NO ANSWER PROVIDED', async (t) => {
+  let capturedPrompt;
+  mockLoadApiProvider(t, async (prompt) => {
+    capturedPrompt = prompt;
+    return { output: JSON.stringify({ matches: false, reason: 'no answer' }) };
   });
 
-  await qaMatchAssertion(fakeOutput(), fakeContext());
+  const output = { report: { questions: [] } }; // no actual answers exist at all
+  await qaMatchAssertion(output, fakeContext());
 
-  assert.deepEqual(capturedGrading, { provider: 'anthropic:messages:claude-sonnet-4-5' });
+  assert.match(capturedPrompt, /NO ANSWER PROVIDED/);
 });
 
 test('qaMatchAssertion fails when score is below an explicit threshold on the qa_match assert entry', async (t) => {
-  mockMatchesLlmRubric(t, async () => ({ pass: true, score: 0.1, reason: 'low' }));
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: false, reason: 'low' }) }));
 
   const context = fakeContext({ test: { assert: [{ metric: 'qa_match', threshold: 0.9 }], options: {} } });
   const result = await qaMatchAssertion(fakeOutput(), context);
 
-  // score = (2/3 + 0.1) / 2 ≈ 0.383, below threshold 0.9
+  // riskStatusMatch = 2/3, answerContentMatch = 0, score = (2/3 + 0) / 2 = 1/3, below threshold 0.9
   assert.equal(result.pass, false);
 });
 
-test('qaMatchAssertion propagates errors from matchesLlmRubric instead of swallowing them', async (t) => {
-  mockMatchesLlmRubric(t, async () => {
+test('qaMatchAssertion propagates an error thrown by the grader provider instead of swallowing it', async (t) => {
+  mockLoadApiProvider(t, async () => {
     throw new Error('grader provider timed out');
   });
 
   await assert.rejects(() => qaMatchAssertion(fakeOutput(), fakeContext()), /grader provider timed out/);
+});
+
+test('qaMatchAssertion propagates a response.error from the grader provider', async (t) => {
+  mockLoadApiProvider(t, async () => ({ error: 'rate limited' }));
+
+  await assert.rejects(() => qaMatchAssertion(fakeOutput(), fakeContext()), /rate limited/);
+});
+
+test('qaMatchAssertion propagates a parse error when the grader response has no JSON object', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: 'not json at all' }));
+
+  await assert.rejects(() => qaMatchAssertion(fakeOutput(), fakeContext()), /Could not find a JSON object/);
 });
