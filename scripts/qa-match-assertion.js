@@ -32,6 +32,31 @@ function buildAnswerContentRubric(expectedQa, actualQuestions) {
   ].join('\n');
 }
 
+function buildQuestionGradingPrompt(question, actualAnswer) {
+  return [
+    `Question: ${question.question}`,
+    `Expected answer: ${question.expectedAnswerSummary}`,
+    `Model answer: ${actualAnswer}`,
+    '',
+    "Does the model answer's content and reasoning semantically match the expected answer above",
+    '(exact wording does not matter, meaning does)? Respond with only a JSON object, no other text:',
+    '{"matches": boolean, "reason": string}.',
+  ].join('\n');
+}
+
+function parseGraderVerdict(responseOutput) {
+  const text = typeof responseOutput === 'string' ? responseOutput : JSON.stringify(responseOutput);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    throw new Error(`Could not find a JSON object in grader response: ${text}`);
+  }
+  const parsed = JSON.parse(match[0]);
+  if (typeof parsed.matches !== 'boolean' || typeof parsed.reason !== 'string') {
+    throw new Error(`Grader response JSON missing matches/reason fields: ${text}`);
+  }
+  return { matches: parsed.matches, reason: parsed.reason };
+}
+
 async function qaMatchAssertion(output, context) {
   const expectedQa = context.vars.expected.qa;
   const actualQuestions = output.report.questions;
@@ -63,3 +88,5 @@ async function qaMatchAssertion(output, context) {
 module.exports = qaMatchAssertion;
 module.exports.computeRiskStatusMatch = computeRiskStatusMatch;
 module.exports.buildAnswerContentRubric = buildAnswerContentRubric;
+module.exports.buildQuestionGradingPrompt = buildQuestionGradingPrompt;
+module.exports.parseGraderVerdict = parseGraderVerdict;

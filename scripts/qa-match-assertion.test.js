@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const promptfoo = require('promptfoo');
 const qaMatchAssertion = require('./qa-match-assertion');
-const { computeRiskStatusMatch, buildAnswerContentRubric } = require('./qa-match-assertion');
+const { computeRiskStatusMatch, buildAnswerContentRubric, buildQuestionGradingPrompt, parseGraderVerdict } = require('./qa-match-assertion');
 
 test('computeRiskStatusMatch returns the fraction of matching risk determinations', () => {
   const expectedQa = [
@@ -53,6 +53,35 @@ test('buildAnswerContentRubric marks a question missing from the actual report a
   const rubric = buildAnswerContentRubric(expectedQa, actualQuestions);
 
   assert.match(rubric, /NO ANSWER PROVIDED/);
+});
+
+test('buildQuestionGradingPrompt embeds the question, expected answer, and actual answer', () => {
+  const question = { predefinedQuestionId: 1, question: 'Is there fraud?', expectedAnswerSummary: 'Yes, per doc X.' };
+  const prompt = buildQuestionGradingPrompt(question, 'Yes, doc X confirms it.');
+
+  assert.match(prompt, /Is there fraud\?/);
+  assert.match(prompt, /Yes, per doc X\./);
+  assert.match(prompt, /Yes, doc X confirms it\./);
+  assert.match(prompt, /"matches": boolean, "reason": string/);
+});
+
+test('parseGraderVerdict parses a clean JSON response', () => {
+  const result = parseGraderVerdict('{"matches": true, "reason": "content matches"}');
+  assert.deepEqual(result, { matches: true, reason: 'content matches' });
+});
+
+test('parseGraderVerdict extracts JSON even when wrapped in markdown code fences', () => {
+  const response = '```json\n{"matches": false, "reason": "no match"}\n```';
+  assert.deepEqual(parseGraderVerdict(response), { matches: false, reason: 'no match' });
+});
+
+test('parseGraderVerdict throws a clear error when no JSON object is present', () => {
+  assert.throws(() => parseGraderVerdict('not json at all'), /Could not find a JSON object/);
+});
+
+test('parseGraderVerdict throws a clear error when matches or reason fields are missing or the wrong type', () => {
+  assert.throws(() => parseGraderVerdict('{"matches": "yes", "reason": "ok"}'), /missing matches\/reason fields/);
+  assert.throws(() => parseGraderVerdict('{"matches": true}'), /missing matches\/reason fields/);
 });
 
 function mockMatchesLlmRubric(t, impl) {
