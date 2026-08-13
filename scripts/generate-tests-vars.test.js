@@ -16,6 +16,10 @@ function sampleClaim(overrides) {
     ingestionModelId: 1,
     processingModelId: 9,
     tags: [{ tagId: 3, tagValueId: 17 }],
+    expectedFraudRiskScore: 0.5,
+    expectedClaimantName: 'Jane Doe',
+    expectedDefendant: 'Acme Corp',
+    expectedInsuranceFirm: 'Acme Insurance',
     summary: 'Gold summary.',
     questions: [
       {
@@ -46,6 +50,10 @@ test('buildTestsVars maps a flat claim into promptfoo test-case shape', () => {
         },
         expected: {
           summarySynopsis: 'Gold summary.',
+          fraudRiskScore: 0.5,
+          claimantName: 'Jane Doe',
+          defendant: 'Acme Corp',
+          insuranceFirm: 'Acme Insurance',
           qa: [
             {
               predefinedQuestionId: 1480,

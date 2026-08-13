@@ -22,6 +22,10 @@ function buildTestsVars(claims) {
       },
       expected: {
         summarySynopsis: claim.summary,
+        fraudRiskScore: claim.expectedFraudRiskScore,
+        claimantName: claim.expectedClaimantName,
+        defendant: claim.expectedDefendant,
+        insuranceFirm: claim.expectedInsuranceFirm,
         qa: claim.questions.map((q) => ({
           predefinedQuestionId: q.id,
           question: q.question,

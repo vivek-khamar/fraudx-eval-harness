@@ -63,6 +63,10 @@ test('every test case\'s vars.expected has a summary and at least one predefined
     const expected = testCase.vars.expected;
     assert.equal(typeof expected.summarySynopsis, 'string');
     assert.ok(expected.summarySynopsis.length > 0);
+    assert.equal(typeof expected.fraudRiskScore, 'number');
+    assert.equal(typeof expected.claimantName, 'string');
+    assert.equal(typeof expected.defendant, 'string');
+    assert.equal(typeof expected.insuranceFirm, 'string');
 
     assert.ok(Array.isArray(expected.qa));
     assert.ok(expected.qa.length > 0, `vars.expected.qa must have at least one entry (sourceBucketId: ${testCase.vars.bucket.sourceBucketId})`);
@@ -79,10 +83,10 @@ test('every test case\'s vars.expected has a summary and at least one predefined
   }
 });
 
-test('config declares exactly two assertions: qa_match, report_quality', () => {
+test('config declares exactly three assertions: qa_match, report_quality, metadata_match', () => {
   const asserts = config.defaultTest.assert;
   assert.ok(Array.isArray(asserts));
-  assert.equal(asserts.length, 2);
+  assert.equal(asserts.length, 3);
 
   const qaMatch = asserts.find((a) => a.metric === 'qa_match');
   assert.equal(qaMatch.type, 'javascript');
@@ -92,4 +96,8 @@ test('config declares exactly two assertions: qa_match, report_quality', () => {
   assert.equal(reportQuality.type, 'llm-rubric');
   assert.ok(reportQuality.value.includes('{{expected.summarySynopsis}}'));
   assert.ok(reportQuality.value.toLowerCase().includes('citeddocumentstext'));
+
+  const metadataMatch = asserts.find((a) => a.metric === 'metadata_match');
+  assert.equal(metadataMatch.type, 'javascript');
+  assert.equal(metadataMatch.value, 'file://scripts/metadata-match-assertion.js');
 });
