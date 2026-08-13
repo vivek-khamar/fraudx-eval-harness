@@ -99,6 +99,106 @@ implementation (write a throwaway script that runs a mocked/real assertion and i
 resulting object shape) before relying on it, the same way the `matchesLlmRubric` real path was
 verified empirically rather than assumed, earlier this project.
 
+## New assertion: `metadata_match`
+
+The real report response includes claim-level fields nothing currently checks: `fraudRiskScore`,
+`claimantName`, `defendant`, `insuranceFirm` (confirmed present on `output.report` — the same raw
+object `report.bucketId`/`report.questions` are already read from today; no changes needed to
+`provider.js` or `fraudx-client.js` to expose them).
+
+**Two named sub-scores from one assertion**, following the same pattern established for
+`qa_match` (`riskStatusMatch` + `answerContentMatch` from one assertion, not two):
+
+- **`fraudRiskScoreMatch`** — binary (1 or 0): does `|output.report.fraudRiskScore -
+  expected.fraudRiskScore| ≤ 0.1`?
+- **`entityFieldsMatch`** — fraction matched, out of 3: `claimantName`, `defendant`,
+  `insuranceFirm`, each compared case- and whitespace-insensitively (`trim().toLowerCase()`,
+  collapse repeated whitespace) — not fuzzy/similarity-based. Real data already shows the same
+  entity spelled two ways in one report ("One Team Restoration, Inc." vs "OneTeam Restoration,
+  Inc.") — that specific case would still count as a mismatch under this rule; only
+  case/whitespace differences are tolerated.
+
+**Mechanism** (`scripts/metadata-match-assertion.js`, deterministic — no LLM call, no
+`promptfoo.loadApiProvider` needed):
+
+```js
+function normalize(str) {
+  return (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+async function metadataMatchAssertion(output, context) {
+  const expected = context.vars.expected;
+  const report = output.report;
+
+  const fraudRiskScoreMatch = Math.abs(report.fraudRiskScore - expected.fraudRiskScore) <= 0.1 ? 1 : 0;
+
+  const entityFields = [
+    [report.claimantName, expected.claimantName],
+    [report.defendant, expected.defendant],
+    [report.insuranceFirm, expected.insuranceFirm],
+  ];
+  const entityMatches = entityFields.filter(([actual, exp]) => normalize(actual) === normalize(exp)).length;
+  const entityFieldsMatch = entityMatches / entityFields.length;
+
+  const score = (fraudRiskScoreMatch + entityFieldsMatch) / 2;
+  // threshold/pass logic identical in shape to qa-match-assertion.js's convention
+  const metadataMatchAssert = context.test && Array.isArray(context.test.assert)
+    ? context.test.assert.find((a) => a.metric === 'metadata_match')
+    : undefined;
+  const threshold = metadataMatchAssert && metadataMatchAssert.threshold;
+  const pass = threshold === undefined ? score > 0 : score >= threshold;
+
+  return {
+    pass,
+    score,
+    reason: `fraudRiskScoreMatch=${fraudRiskScoreMatch}, entityFieldsMatch=${entityFieldsMatch}`,
+    namedScores: { fraudRiskScoreMatch, entityFieldsMatch },
+  };
+}
+```
+
+**`promptfooconfig.yaml`** gets a third assert entry:
+
+```yaml
+    - type: javascript
+      metric: metadata_match
+      value: file://scripts/metadata-match-assertion.js
+```
+
+**New expected fields in `testdata/claims.json`** (top-level per claim, alongside `summary`):
+`expectedFraudRiskScore` (number), `expectedClaimantName`, `expectedDefendant`,
+`expectedInsuranceFirm` (strings) — need to be filled in for the existing golden claim(s), since
+no such reference data exists today.
+
+**`scripts/generate-tests-vars.js`** maps these into `vars.expected` alongside `summarySynopsis`
+and `qa`:
+
+```js
+expected: {
+  summarySynopsis: claim.summary,
+  fraudRiskScore: claim.expectedFraudRiskScore,
+  claimantName: claim.expectedClaimantName,
+  defendant: claim.expectedDefendant,
+  insuranceFirm: claim.expectedInsuranceFirm,
+  qa: claim.questions.map(...), // unchanged
+},
+```
+
+**Accuracy formula changes from equal thirds to equal fifths** — `scripts/score-dashboard.js`:
+
+```js
+const accuracy = Math.round(
+  20 * namedScores.riskStatusMatch +
+  20 * namedScores.answerContentMatch +
+  20 * namedScores.report_quality +
+  20 * namedScores.fraudRiskScoreMatch +
+  20 * namedScores.entityFieldsMatch
+);
+```
+
+All five signals weighted identically — the two new metadata scores don't get a smaller share
+just because there are now more of them.
+
 ## New script: `scripts/generate-pdf-report.js`
 
 A new, focused module — matching the existing pattern of `scripts/generate-tests-vars.js` /
@@ -134,7 +234,11 @@ A new, focused module — matching the existing pattern of `scripts/generate-tes
    as needed for 35 rows × 4 columns of text. Row height is computed from wrapped text height
    per cell (pdfkit has no built-in flowing table — this is manual layout code, an
    implementation-level detail, not a design decision).
-3. **Overall summary** — `report_quality`'s `reason` text (the "overall LLM summary") alongside
+3. **Claim metadata table** — one row per metadata field (`fraudRiskScore`, `claimantName`,
+   `defendant`, `insuranceFirm`): *Field | Expected | Actual | Match (✓/✗)*, sourced from
+   `output.report` and `context.vars.expected` the same way `metadata_match` computes them (not
+   re-derived independently — same tolerance/normalization rules).
+4. **Overall summary** — `report_quality`'s `reason` text (the "overall LLM summary") alongside
    its own `score` and the claim's final `accuracy`, restated for context.
 
 ## Wiring into npm scripts
@@ -164,15 +268,26 @@ read, so skipping it is right. `npm run eval` already chains to `npm run score`
   `results.json` fixture (mirroring `test/fixtures/results.sample.json`'s pattern, extended with
   a `perQuestionBreakdown`), then re-parses the written PDF with `pdf-parse` (already a
   dependency, used elsewhere in this repo for extracting PDF text) to assert specific expected
-  substrings appear — the `bucketId`, a question's text, a `report_quality` reason fragment.
-  Also covers: a claim with no `bucketId` produces no file; the output path matches
-  `reports/<bucketId>/report-<timestamp>.pdf` with the timestamp taken from
-  `results.timestamp`, not wall-clock time.
+  substrings appear — the `bucketId`, a question's text, a `report_quality` reason fragment, and
+  the claim metadata table's fields. Also covers: a claim with no `bucketId` produces no file;
+  the output path matches `reports/<bucketId>/report-<timestamp>.pdf` with the timestamp taken
+  from `results.timestamp`, not wall-clock time.
+- **`scripts/metadata-match-assertion.test.js`** (new) — covers: `fraudRiskScoreMatch` is 1
+  within the ±0.1 tolerance and 0 outside it (including boundary cases at exactly 0.1);
+  `entityFieldsMatch` counts case/whitespace-insensitive matches correctly (0/3, 1/3, 2/3, 3/3);
+  the same entity spelled two genuinely different ways (e.g. "One Team" vs "OneTeam") counts as a
+  mismatch, confirming normalization does *not* extend to fuzzy matching; the threshold/`pass`
+  logic (no threshold → `score > 0`; threshold set → `score >= threshold`), same shape as
+  `qa-match-assertion.test.js`'s coverage.
 
 ## Out of scope
 
-- `riskStatusMatch`'s computation, `report_quality`'s mechanism, and the console JSON dashboard
-  are all unchanged.
+- `riskStatusMatch`'s computation and `report_quality`'s mechanism are both unchanged.
+  `scripts/score-dashboard.js`'s console JSON *format* is unchanged (still a dashboard array),
+  but its `accuracy` formula changes (equal thirds → equal fifths, see `metadata_match` above).
 - No PDF (or any output) for claims that errored before producing a report.
 - No consolidated multi-claim PDF — one PDF per scoreable claim, matching the per-`bucketId`
   folder structure.
+- Fuzzy/similarity-based entity matching — explicitly rejected in favor of
+  case/whitespace-insensitive exact match, despite real data showing genuine spelling variation
+  that this choice will miss.
