@@ -15,9 +15,9 @@ test('scoreDashboard reads results.json and computes all three dashboard numbers
   // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported in seconds, no budget scoring.
   assert.equal(dashboard.ingestionTime, 60);
   assert.equal(dashboard.processingTime, 300);
-  // acc = round((100/3)*riskStatusMatch + (100/3)*answerContentMatch + (100/3)*report_quality)
-  //     = round((100/3)*0.9 + (100/3)*0.7 + (100/3)*0.85) = round(81.666...) = 82
-  assert.equal(dashboard.accuracy, 82);
+  // accuracy = round(20*(riskStatusMatch + answerContentMatch + report_quality + fraudRiskScoreMatch + entityFieldsMatch))
+  //          = round(20*0.9 + 20*0.7 + 20*0.85 + 20*1 + 20*1) = round(89) = 89
+  assert.equal(dashboard.accuracy, 89);
 });
 
 test('scoreDashboard reports ingestionTime and processingTime independently, in seconds, without combining them', () => {
@@ -44,6 +44,8 @@ test('scoreDashboard reports ingestionTime and processingTime independently, in 
                 riskStatusMatch: 0.9,
                 answerContentMatch: 0.7,
                 report_quality: 0.85,
+                fraudRiskScoreMatch: 1,
+                entityFieldsMatch: 1,
               },
             },
           },
@@ -75,7 +77,7 @@ test('scoreDashboard scores every claim in results.json independently, not just 
                 report: { bucketId: 31662, summary: 's', qa: [] },
               },
             },
-            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.9, answerContentMatch: 0.7, report_quality: 0.85 } },
+            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.9, answerContentMatch: 0.7, report_quality: 0.85, fraudRiskScoreMatch: 1, entityFieldsMatch: 1 } },
           },
           {
             response: {
@@ -85,7 +87,7 @@ test('scoreDashboard scores every claim in results.json independently, not just 
                 report: { bucketId: 31970, summary: 's', qa: [] },
               },
             },
-            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.4, answerContentMatch: 0.3, report_quality: 0.5 } },
+            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.4, answerContentMatch: 0.3, report_quality: 0.5, fraudRiskScoreMatch: 0, entityFieldsMatch: 0.5 } },
           },
         ],
       },
@@ -96,12 +98,12 @@ test('scoreDashboard scores every claim in results.json independently, not just 
 
   assert.equal(dashboards.length, 2);
   assert.equal(dashboards[0].bucketId, 31662);
-  assert.equal(dashboards[0].accuracy, 82);
+  assert.equal(dashboards[0].accuracy, 89);
   assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].ingestionTime, 30);
   assert.equal(dashboards[1].processingTime, 120);
-  // acc = round((100/3)*0.4 + (100/3)*0.3 + (100/3)*0.5) = round(40.0) = 40
-  assert.equal(dashboards[1].accuracy, 40);
+  // accuracy = round(20*0.4 + 20*0.3 + 20*0.5 + 20*0 + 20*0.5) = round(34) = 34
+  assert.equal(dashboards[1].accuracy, 34);
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {
@@ -160,6 +162,8 @@ test('scoreDashboard reports a claim with a NaN accuracy score (missing named sc
               namedScores: {
                 riskStatusMatch: 0.9,
                 answerContentMatch: 0.8,
+                fraudRiskScoreMatch: 1,
+                entityFieldsMatch: 1,
                 // report_quality is missing
               },
             },
@@ -194,7 +198,7 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
                 report: { bucketId: 31970, summary: 's', qa: [] },
               },
             },
-            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.4, answerContentMatch: 0.3, report_quality: 0.5 } },
+            gradingResult: { pass: true, score: 1, namedScores: { riskStatusMatch: 0.4, answerContentMatch: 0.3, report_quality: 0.5, fraudRiskScoreMatch: 0, entityFieldsMatch: 0.5 } },
           },
         ],
       },
@@ -208,7 +212,7 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
   assert.match(dashboards[0].error, /INGESTION model is not found/);
   assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].error, undefined);
-  assert.equal(dashboards[1].accuracy, 40);
+  assert.equal(dashboards[1].accuracy, 34);
 });
 
 test('scoreDashboard reports full scores for a claim that has namedScores even though promptfoo marked it as errored (an assertion failed its own pass bar)', () => {
@@ -235,7 +239,7 @@ test('scoreDashboard reports full scores for a claim that has namedScores even t
             gradingResult: {
               pass: false,
               score: 0.65,
-              namedScores: { riskStatusMatch: 0.629, answerContentMatch: 0.571, report_quality: 0.7 },
+              namedScores: { riskStatusMatch: 0.629, answerContentMatch: 0.571, report_quality: 0.7, fraudRiskScoreMatch: 1, entityFieldsMatch: 2 / 3 },
             },
           },
         ],
@@ -249,8 +253,8 @@ test('scoreDashboard reports full scores for a claim that has namedScores even t
   assert.equal(dashboards[0].bucketId, 31994);
   assert.equal(dashboards[0].ingestionTime, 30);
   assert.equal(dashboards[0].processingTime, 120);
-  // acc = round((100/3)*0.629 + (100/3)*0.571 + (100/3)*0.7) = round(63.33...) = 63
-  assert.equal(dashboards[0].accuracy, 63);
+  // accuracy = round(20*0.629 + 20*0.571 + 20*0.7 + 20*1 + 20*(2/3)) = round(71.333...) = 71
+  assert.equal(dashboards[0].accuracy, 71);
   assert.equal(dashboards[0].error, undefined);
 });
 

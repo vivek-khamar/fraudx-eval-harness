@@ -25,7 +25,9 @@
           "namedScores": {
             "riskStatusMatch": 0.9,
             "answerContentMatch": 0.7,
-            "report_quality": 0.85
+            "report_quality": 0.85,
+            "fraudRiskScoreMatch": 1,
+            "entityFieldsMatch": 1
           }
         }
       }

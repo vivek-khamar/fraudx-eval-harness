@@ -26,9 +26,11 @@ function scoreDashboard(resultsFilePath) {
     const processingTime = output.processing.timeMs / 1000;
 
     const accuracy = Math.round(
-      (100 / 3) * namedScores.riskStatusMatch +
-      (100 / 3) * namedScores.answerContentMatch +
-      (100 / 3) * namedScores.report_quality
+      20 * namedScores.riskStatusMatch +
+      20 * namedScores.answerContentMatch +
+      20 * namedScores.report_quality +
+      20 * namedScores.fraudRiskScoreMatch +
+      20 * namedScores.entityFieldsMatch
     );
     if (Number.isNaN(accuracy)) {
       return { bucketId, error: 'Computed accuracy score is NaN — a named score is missing from the results file' };
