@@ -6,7 +6,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { PDFParse } = require('pdf-parse');
-const { generatePdfReports, formatTimestampForFilename, formatRiskStatus, stripRiskStatusPrefix } = require('./generate-pdf-report');
+const {
+  generatePdfReports,
+  formatTimestampForFilename,
+  formatRiskStatus,
+  stripRiskStatusPrefix,
+  sortByRiskStatus,
+  uniqueFilePath,
+} = require('./generate-pdf-report');
 
 function sampleResultsFile() {
   return {
@@ -96,6 +103,50 @@ test('stripRiskStatusPrefix handles a missing answer', () => {
   assert.equal(stripRiskStatusPrefix(undefined), '');
 });
 
+test('sortByRiskStatus orders Detected before Unsure before Not Detected, regardless of input order', () => {
+  const input = [
+    { id: 'a', riskStatus: 'UNSURE' },
+    { id: 'b', riskStatus: 'RISK_NOT_DETECTED' },
+    { id: 'c', riskStatus: 'RISK_DETECTED' },
+  ];
+  assert.deepEqual(sortByRiskStatus(input).map((e) => e.id), ['c', 'a', 'b']);
+});
+
+test('sortByRiskStatus is stable within the same risk status and sorts a missing/unknown status last', () => {
+  const input = [
+    { id: 'a', riskStatus: 'UNSURE' },
+    { id: 'b', riskStatus: undefined },
+    { id: 'c', riskStatus: 'RISK_DETECTED' },
+    { id: 'd', riskStatus: 'UNSURE' },
+  ];
+  assert.deepEqual(sortByRiskStatus(input).map((e) => e.id), ['c', 'a', 'd', 'b']);
+});
+
+test('sortByRiskStatus does not mutate the input array', () => {
+  const input = [{ id: 'a', riskStatus: 'UNSURE' }, { id: 'b', riskStatus: 'RISK_DETECTED' }];
+  const copy = [...input];
+  sortByRiskStatus(input);
+  assert.deepEqual(input, copy);
+});
+
+test('uniqueFilePath returns the given path unchanged when nothing exists there yet', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'unique-file-path-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const target = path.join(tmpDir, 'report.pdf');
+  assert.equal(uniqueFilePath(target), target);
+});
+
+test('uniqueFilePath appends -2, -3, ... to avoid an existing file, preserving the extension', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'unique-file-path-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const target = path.join(tmpDir, 'report.pdf');
+  fs.writeFileSync(target, 'first');
+  assert.equal(uniqueFilePath(target), path.join(tmpDir, 'report-2.pdf'));
+
+  fs.writeFileSync(path.join(tmpDir, 'report-2.pdf'), 'second');
+  assert.equal(uniqueFilePath(target), path.join(tmpDir, 'report-3.pdf'));
+});
+
 test('generatePdfReports writes one PDF per claim with a bucketId, at reports/<bucketId>/report-<timestamp>.pdf', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -109,6 +160,27 @@ test('generatePdfReports writes one PDF per claim with a bucketId, at reports/<b
   assert.equal(written.length, 1);
   assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
   assert.ok(fs.existsSync(written[0]));
+});
+
+test('generatePdfReports adds a new file instead of overwriting when a report already exists for that bucket/timestamp', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile()));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const firstRun = await generatePdfReports(resultsPath, reportsDir);
+  const originalPath = firstRun[0];
+  const originalContent = fs.readFileSync(originalPath);
+
+  const secondRun = await generatePdfReports(resultsPath, reportsDir);
+
+  assert.equal(secondRun[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47-2.pdf'));
+  assert.notEqual(secondRun[0], originalPath);
+  assert.ok(fs.existsSync(originalPath), 'the original report must still exist');
+  assert.ok(fs.existsSync(secondRun[0]), 'a new report must have been written');
+  assert.deepEqual(fs.readFileSync(originalPath), originalContent, 'the original report must be untouched');
 });
 
 test('generatePdfReports skips a claim with no bucketId (errored before a report existed)', async (t) => {
@@ -183,6 +255,43 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);
   assert.match(text, /One Team Restoration, Inc\./);
+});
+
+test('generatePdfReports numbers questions sequentially in Detected/Unsure/Not-Detected order, not by predefinedQuestionId', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const qaMatchComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'qa_match'
+  );
+  // Deliberately out of both ID order and risk-status order.
+  qaMatchComponent.perQuestionBreakdown = [
+    { predefinedQuestionId: 900, question: 'UNSURE-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', matches: true, reason: 'r' },
+    { predefinedQuestionId: 100, question: 'NOT-DETECTED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', matches: true, reason: 'r' },
+    { predefinedQuestionId: 500, question: 'DETECTED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', matches: true, reason: 'r' },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.match(text, /Q1: DETECTED-QUESTION/);
+  assert.match(text, /Q2: UNSURE-QUESTION/);
+  assert.match(text, /Q3: NOT-DETECTED-QUESTION/);
+  assert.doesNotMatch(text, /Q900/);
+  assert.doesNotMatch(text, /Q100/);
+  assert.doesNotMatch(text, /Q500/);
 });
 
 test('generatePdfReports keeps a question\'s content together in reading order, without truncation, even when its reason text forces a page break', async (t) => {

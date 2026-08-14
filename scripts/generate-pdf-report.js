@@ -25,6 +25,41 @@ function stripRiskStatusPrefix(answer) {
   return (answer || '').replace(/^RISK [A-Z ]+:\s*/, '');
 }
 
+const RISK_STATUS_ORDER = ['RISK_DETECTED', 'UNSURE', 'RISK_NOT_DETECTED'];
+
+function riskStatusSortKey(riskStatus) {
+  const index = RISK_STATUS_ORDER.indexOf(riskStatus);
+  return index === -1 ? RISK_STATUS_ORDER.length : index;
+}
+
+// Orders questions Detected -> Unsure -> Not Detected (any other/missing risk
+// status sorts last) so the highest-risk findings read first in the PDF.
+// Array.prototype.sort is stable, so questions sharing a risk status keep
+// their original relative order.
+function sortByRiskStatus(perQuestionBreakdown) {
+  return [...perQuestionBreakdown].sort(
+    (a, b) => riskStatusSortKey(a.riskStatus) - riskStatusSortKey(b.riskStatus)
+  );
+}
+
+// Appends "-2", "-3", ... before the extension until an unused path is found,
+// so re-generating a report for the same bucket/timestamp adds a new file
+// instead of silently overwriting the previous one.
+function uniqueFilePath(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return filePath;
+  }
+  const ext = path.extname(filePath);
+  const base = filePath.slice(0, filePath.length - ext.length);
+  let n = 2;
+  let candidate = `${base}-${n}${ext}`;
+  while (fs.existsSync(candidate)) {
+    n += 1;
+    candidate = `${base}-${n}${ext}`;
+  }
+  return candidate;
+}
+
 function drawTableRow(doc, columns, colWidths) {
   const heights = columns.map((text, i) => doc.heightOfString(String(text), { width: colWidths[i] }));
   const rowHeight = Math.max(...heights) + 8;
@@ -122,20 +157,21 @@ function renderClaimPdf(result, timestamp, filePath) {
     doc.moveDown(0.35);
   }
 
-  perQuestionBreakdown.forEach((entry, index) => {
+  const orderedQuestions = sortByRiskStatus(perQuestionBreakdown);
+  orderedQuestions.forEach((entry, index) => {
     // Full-width flowing paragraphs (no manual x/y column positioning) let pdfkit's
     // automatic pagination handle overflow within each paragraph, so a single
     // question's content stays together in reading order even if it spans a page
     // break — unlike the fixed-column drawTableRow layout below, which tears a
     // wrapped cell's remaining columns onto whatever page the cursor lands on.
-    doc.fontSize(11).font('Helvetica-Bold').text(`Q${entry.predefinedQuestionId}: ${entry.question}`, { width: usableWidth });
+    doc.fontSize(11).font('Helvetica-Bold').text(`Q${index + 1}: ${entry.question}`, { width: usableWidth });
     doc.moveDown(0.5);
     field('Risk Status: ', formatRiskStatus(entry.riskStatus));
     field('Match: ', entry.matches ? 'YES' : 'NO');
     field('Answer: ', stripRiskStatusPrefix(entry.actualAnswer));
     field('Reason: ', entry.reason);
 
-    if (index < perQuestionBreakdown.length - 1) {
+    if (index < orderedQuestions.length - 1) {
       doc.moveDown(0.5);
       doc
         .strokeColor('#cccccc')
@@ -200,7 +236,7 @@ async function generatePdfReports(resultsFilePath, reportsDir) {
       continue;
     }
     const fileName = `report-${formatTimestampForFilename(timestamp)}.pdf`;
-    const filePath = path.join(reportsDir, String(bucketId), fileName);
+    const filePath = uniqueFilePath(path.join(reportsDir, String(bucketId), fileName));
     await renderClaimPdf(result, timestamp, filePath);
     written.push(filePath);
   }
@@ -227,4 +263,11 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { generatePdfReports, formatTimestampForFilename, formatRiskStatus, stripRiskStatusPrefix };
+module.exports = {
+  generatePdfReports,
+  formatTimestampForFilename,
+  formatRiskStatus,
+  stripRiskStatusPrefix,
+  sortByRiskStatus,
+  uniqueFilePath,
+};

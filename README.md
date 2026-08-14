@@ -68,16 +68,21 @@ document-ingestion + report pipeline and scores each against a human-verified an
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
-  `reports/<bucketId>/report-<timestamp>.pdf`. The PDF opens with a centered "Claim Report" title
-  and a field list (bucket ID, ingestion time, processing time, accuracy, generated-at), then the
-  question-by-question breakdown (one block per question — heading, then labeled Risk Status,
-  Match, Answer, and Reason fields, separated by a divider between questions, laid out as
-  full-width flowing paragraphs so a single question's content stays together in reading order
-  even across a page break; the redundant "RISK ...:" prefix the real report embeds at the start
-  of each answer is stripped since risk status now has its own field), the claim-metadata match
-  table (`fraudRiskScore` and the three entity fields, expected vs. actual), and an overall
-  summary. A claim that gets skipped (no `bucketId`, or missing the data the PDF needs) is logged
-  via `console.error` with its `bucketId` and a reason, and `main()` prints a final
+  `reports/<bucketId>/report-<timestamp>.pdf` — if a report already exists at that exact path
+  (e.g. re-running against the same `results.json`), a new file is added alongside it
+  (`report-<timestamp>-2.pdf`, `-3.pdf`, ...) rather than overwriting it. The PDF opens with a
+  centered "Claim Report" title and a field list (bucket ID, ingestion time, processing time,
+  accuracy, generated-at), then the question-by-question breakdown — questions are numbered
+  sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then Unsure, then Not
+  Detected) rather than by their original ID, so the highest-risk findings read first. Each
+  block has a heading followed by labeled Risk Status, Match, Answer, and Reason fields,
+  separated by a divider between questions, laid out as full-width flowing paragraphs so a
+  single question's content stays together in reading order even across a page break; the
+  redundant "RISK ...:" prefix the real report embeds at the start of each answer is stripped
+  since risk status now has its own field. After that comes the claim-metadata match table
+  (`fraudRiskScore` and the three entity fields, expected vs. actual) and an overall summary. A
+  claim that gets skipped (no `bucketId`, or missing the data the PDF needs) is logged via
+  `console.error` with its `bucketId` and a reason, and `main()` prints a final
   `Wrote N report(s).` summary line, so a run that produces zero PDFs is never silent.
 
 ## Setup
