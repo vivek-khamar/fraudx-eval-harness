@@ -12,17 +12,17 @@ on:
           - full-eval
         default: full-eval
       newClaimName:
-        description: 'Name for the created claim (required for full-eval — testdata/claims.json has no default)'
+        description: 'Claim name'
         required: false
         type: string
         default: ''
       ingestionModelName:
-        description: 'Exact displayName of the ingestion model to use (required for full-eval)'
+        description: 'Ingestion model displayName'
         required: false
         type: string
         default: ''
       processingModelName:
-        description: 'Exact displayName of the processing model to use (required for full-eval)'
+        description: 'Processing model displayName'
         required: false
         type: string
         default: ''
