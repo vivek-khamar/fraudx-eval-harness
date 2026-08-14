@@ -36,25 +36,37 @@
         "id": 1627,
         "question": "Display Question: Is there evidence that the plaintiff was identified by the ISO or NICB as a fraud risk red flag?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff is flagged as a fraud risk by ISO or NICB due to missing or inconclusive screening data.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1477,
         "question": "Is there evidence that the plaintiff's was identified by the ISO or NICB as having had 2 or more claims over the last 3 years?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff has had two or more claims over the last three years due to missing or inconclusive information from ISO or NICB sources.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1479,
         "question": "Are any of the plaintiff's medical providers included in the list of medical providers bad actors?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's medical provider **Pain Physicians NY PLLC** is included in the list of medical providers bad actors.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1481,
         "question": "Do several plaintiff's medical providers share the same specifc address?",
         "expectedAnswer": "RISK DETECTED: Multiple medical providers associated with the plaintiff — Englington Medical P.C., and Pain Physicians NY — are listed at the same address: 9525 Jamaica Avenue, Woodhaven, NY 11421.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1482,
@@ -66,7 +78,10 @@
         "id": 1483,
         "question": "Was the plaintiff's accident reported to a supervisor?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff reported the accident to a supervisor due to incomplete or inconclusive case documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1484,
@@ -78,7 +93,10 @@
         "id": 1485,
         "question": "Did the plaintiff's medical condition not improve after 45 days of treatment?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff's medical condition improved after 45 days of treatment due to incomplete or inconclusive medical records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1486,
@@ -90,13 +108,20 @@
         "id": 1487,
         "question": "Is there any evidence that pre-existing medical conditions or prior injuries could be a factor in plaintiff's medical reports?",
         "expectedAnswer": "RISK DETECTED: There is evidence that pre-existing medical conditions or prior injuries may be a factor in the plaintiff's medical reports.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1488,
         "question": "Are there inconsistencies between the plaintiff's initial medical findings from the ER doctors and the the plaintiff's medical findings from plaintiff's doctors after the plaintiff's initial ER visit?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether inconsistencies exist between ER and follow-up findings due to missing or insufficient medical records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf",
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1489,
@@ -114,7 +139,10 @@
         "id": 1491,
         "question": "Was there clear medical evidence that the plaintiff's medical conditions and findings in the ER would result in the subsequent surgery?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff's ER findings support the need for surgery due to incomplete or inconclusive medical documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1492,
@@ -126,25 +154,40 @@
         "id": 1493,
         "question": "Is the plaintiff over 35 years of age? If so, were there mention of the word degenerative in any medical reports and MRI or x-ray findings by plaintiff's medical providers?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether degenerative findings were appropriately noted due to missing age confirmation or insufficient medical records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1494,
         "question": "What was the plaintiff's pain rating and what was his blood pressure and heart rate at the ER and are these findings inconsistent with the pain rating table of blood pressure and heart beats data?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine consistency between reported pain level and vital signs due to incomplete or missing ER documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1495,
         "question": "Is there social postings evidence that the plaintiff's life and physical activities that would contradict plaintiff's claim of disability?",
         "expectedAnswer": "No sources found to answer this query!",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "PL65606_Skyline+920+Broadway+%28Cabrera+%29_Photo+Bundle.PDF",
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf",
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1496,
         "question": "Did the plaintiffs description of the cause of the injury evolve over time?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's description of the cause of the injury changed over time, indicating inconsistencies in the account of how the injury occurred.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf",
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1497,
@@ -162,13 +205,20 @@
         "id": 1499,
         "question": "Did plaintiff's diagnosis gets worse over time and include injuries to parts of body not reported when first sought care after the accident?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's diagnosis worsened over time and came to include injuries to additional body parts that were not reported during the initial medical visit following the accident.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1500,
         "question": "Did the plaintiff statements in deposition contradict the accident witnesses statements?",
         "expectedAnswer": "No sources found to answer this query!",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf",
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1501,
@@ -180,37 +230,57 @@
         "id": 1502,
         "question": "Is there any evidence that plaintiff did not remember any of the doctors or locations or clinics where he received treatment for this accident?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff remembered the treating doctors or locations due to incomplete or missing documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf",
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1503,
         "question": "Did the date of plaintiff injury occur within 30 days of his first day on the job site where the accident happened?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the injury occurred within 30 days of the plaintiff starting work due to missing or inconclusive employment or incident records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1504,
         "question": "Is there photographic or video evidence that the plaintiff showing no signs of impairments or reduced physical capabilities that would contradict plaintiff's claim of disability?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether visual evidence contradicts the plaintiff’s disability claim due to missing, poor quality, or inconclusive footage.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1505,
         "question": "Did plaintiff retained legal counsel to represent this case on his behalf within 30 days of the accident?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine the timing of legal representation due to incomplete or missing documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf"
+        ]
       },
       {
         "id": 1568,
         "question": "Did the plaintiff retain legal counsel to represent him in this case prior than seeking further medical attention susbsequent to the ER visit?",
         "expectedAnswer": "RISK DETECTED: The plaintiff retained legal counsel prior to seeking further medical attention beyond the ER visit, indicating a potential litigation-driven strategy over medically guided recovery.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf",
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1569,
         "question": "Is there evidence of how plaintiff's obtained legal counsel to represent this case on his behalf?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine how the plaintiff obtained legal counsel due to incomplete or inconclusive case file information.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedCitedFileNames": [
+          "JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf"
+        ]
       },
       {
         "id": 1570,
