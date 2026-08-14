@@ -42,9 +42,10 @@ function sortByRiskStatus(perQuestionBreakdown) {
   );
 }
 
-// Appends "-2", "-3", ... before the extension until an unused path is found,
-// so re-generating a report for the same bucket/timestamp adds a new file
-// instead of silently overwriting the previous one.
+// Appends "-2", "-3", ... before the extension until an unused path is found.
+// Each generatePdfReports run stamps its filename with the actual time it ran,
+// so this only kicks in on the rare case of two runs landing in the same
+// second — it's a collision fallback, not the primary way reports differ.
 function uniqueFilePath(filePath) {
   if (!fs.existsSync(filePath)) {
     return filePath;
@@ -136,7 +137,7 @@ function renderClaimPdf(result, timestamp, filePath) {
 
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
-  doc.fontSize(18).text('Claim Report', { align: 'center' });
+  doc.fontSize(18).text('Claim Eval Report', { align: 'center' });
   doc.moveDown();
   doc.fontSize(11);
   doc.text(`Bucket ID: ${bucketId}`);
@@ -218,11 +219,17 @@ function renderClaimPdf(result, timestamp, filePath) {
   });
 }
 
-async function generatePdfReports(resultsFilePath, reportsDir) {
+// `now` is injectable so tests can generate a deterministic filename/"Generated
+// at" value instead of the real wall-clock time a live run would use.
+async function generatePdfReports(resultsFilePath, reportsDir, now = () => new Date()) {
   const raw = fs.readFileSync(resultsFilePath, 'utf8');
   const parsed = JSON.parse(raw);
-  const timestamp = parsed.results.timestamp;
   const results = parsed.results.results;
+  // Stamped once per generatePdfReports call (not once per results.json) so
+  // every run of this script — including a re-run against the very same
+  // results.json — gets a filename reflecting when it actually ran, instead
+  // of reusing the eval's frozen results.timestamp for every regeneration.
+  const generatedAt = now().toISOString();
 
   const written = [];
   for (const result of results) {
@@ -235,9 +242,9 @@ async function generatePdfReports(resultsFilePath, reportsDir) {
       console.error(`Skipping claim ${bucketId}: missing required data for PDF generation.`);
       continue;
     }
-    const fileName = `report-${formatTimestampForFilename(timestamp)}.pdf`;
+    const fileName = `report-${formatTimestampForFilename(generatedAt)}.pdf`;
     const filePath = uniqueFilePath(path.join(reportsDir, String(bucketId), fileName));
-    await renderClaimPdf(result, timestamp, filePath);
+    await renderClaimPdf(result, generatedAt, filePath);
     written.push(filePath);
   }
   return written;

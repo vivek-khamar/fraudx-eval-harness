@@ -68,10 +68,12 @@ document-ingestion + report pipeline and scores each against a human-verified an
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
-  `reports/<bucketId>/report-<timestamp>.pdf` — if a report already exists at that exact path
-  (e.g. re-running against the same `results.json`), a new file is added alongside it
-  (`report-<timestamp>-2.pdf`, `-3.pdf`, ...) rather than overwriting it. The PDF opens with a
-  centered "Claim Report" title and a field list (bucket ID, ingestion time, processing time,
+  `reports/<bucketId>/report-<timestamp>.pdf`, where `<timestamp>` is when that PDF-generation
+  run actually happened (not the eval's own `results.timestamp`) — so re-running against the
+  same `results.json` adds a new, distinctly timestamped file alongside any earlier ones instead
+  of overwriting them. On the rare case of two runs landing in the same second, a numeric suffix
+  (`-2`, `-3`, ...) is appended as a fallback. The PDF opens with a centered "Claim Eval Report"
+  title and a field list (bucket ID, ingestion time, processing time,
   accuracy, generated-at), then the question-by-question breakdown — questions are numbered
   sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then Unsure, then Not
   Detected) rather than by their original ID, so the highest-risk findings read first. Each

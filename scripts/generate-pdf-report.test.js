@@ -69,6 +69,10 @@ function sampleResultsFile() {
   };
 }
 
+// Used to give generatePdfReports a deterministic "now" in tests instead of
+// the real wall-clock time a live run would use.
+const FIXED_NOW = () => new Date('2026-08-13T05:52:47.729Z');
+
 test('formatTimestampForFilename converts an ISO timestamp into a filesystem-safe string', () => {
   assert.equal(formatTimestampForFilename('2026-08-13T05:52:47.729Z'), '2026-08-13T05-52-47');
 });
@@ -155,14 +159,14 @@ test('generatePdfReports writes one PDF per claim with a bucketId, at reports/<b
   fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile()));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const written = await generatePdfReports(resultsPath, reportsDir);
+  const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   assert.equal(written.length, 1);
   assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
   assert.ok(fs.existsSync(written[0]));
 });
 
-test('generatePdfReports adds a new file instead of overwriting when a report already exists for that bucket/timestamp', async (t) => {
+test('generatePdfReports stamps each run with its own actual generation time, not the frozen results.timestamp', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -170,11 +174,29 @@ test('generatePdfReports adds a new file instead of overwriting when a report al
   fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile()));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const firstRun = await generatePdfReports(resultsPath, reportsDir);
+  const firstRun = await generatePdfReports(resultsPath, reportsDir, () => new Date('2026-08-13T05:52:47.729Z'));
+  const secondRun = await generatePdfReports(resultsPath, reportsDir, () => new Date('2026-08-14T09:15:03.000Z'));
+
+  assert.equal(firstRun[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
+  assert.equal(secondRun[0], path.join(reportsDir, '32023', 'report-2026-08-14T09-15-03.pdf'));
+  assert.notEqual(secondRun[0], firstRun[0]);
+  assert.ok(fs.existsSync(firstRun[0]), 'the original report must still exist');
+  assert.ok(fs.existsSync(secondRun[0]), 'a new, distinctly timestamped report must have been written');
+});
+
+test('generatePdfReports falls back to a numeric suffix, not an overwrite, on the rare case of two runs in the same second', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile()));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const firstRun = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
   const originalPath = firstRun[0];
   const originalContent = fs.readFileSync(originalPath);
 
-  const secondRun = await generatePdfReports(resultsPath, reportsDir);
+  const secondRun = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   assert.equal(secondRun[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47-2.pdf'));
   assert.notEqual(secondRun[0], originalPath);
@@ -197,7 +219,7 @@ test('generatePdfReports skips a claim with no bucketId (errored before a report
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const written = await generatePdfReports(resultsPath, reportsDir);
+  const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   assert.equal(written.length, 0);
   assert.ok(!fs.existsSync(reportsDir));
@@ -218,7 +240,7 @@ test('generatePdfReports skips a claim with a bucketId but missing gradingResult
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const written = await generatePdfReports(resultsPath, reportsDir);
+  const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   assert.equal(written.length, 1);
   assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
@@ -234,7 +256,7 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile()));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const [filePath] = await generatePdfReports(resultsPath, reportsDir);
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   const parser = new PDFParse({ data: fs.readFileSync(filePath) });
   let text;
@@ -245,9 +267,10 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
     await parser.destroy();
   }
 
-  assert.match(text, /Claim Report/);
-  assert.doesNotMatch(text, /Claim Report.*32023/);
+  assert.match(text, /Claim Eval Report/);
+  assert.doesNotMatch(text, /Claim Eval Report.*32023/);
   assert.match(text, /Bucket ID: 32023/);
+  assert.match(text, /Generated at: 2026-08-13T05:52:47\.729Z/);
   assert.match(text, /Is there fraud\?/);
   assert.match(text, /Risk Status: RISK DETECTED/);
   assert.match(text, /Answer: Yes, per doc X\./);
@@ -275,7 +298,7 @@ test('generatePdfReports numbers questions sequentially in Detected/Unsure/Not-D
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const [filePath] = await generatePdfReports(resultsPath, reportsDir);
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   const parser = new PDFParse({ data: fs.readFileSync(filePath) });
   let text;
@@ -321,7 +344,7 @@ test('generatePdfReports keeps a question\'s content together in reading order, 
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const [filePath] = await generatePdfReports(resultsPath, reportsDir);
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   const parser = new PDFParse({ data: fs.readFileSync(filePath) });
   let text;
@@ -373,7 +396,7 @@ test('generatePdfReports renders the fallback text (not the literal string "unde
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
 
-  const [filePath] = await generatePdfReports(resultsPath, reportsDir);
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   const parser = new PDFParse({ data: fs.readFileSync(filePath) });
   let text;
@@ -410,7 +433,7 @@ test('generatePdfReports logs a console.error mentioning the bucketId of a claim
     console.error = originalConsoleError;
   });
 
-  const written = await generatePdfReports(resultsPath, reportsDir);
+  const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   assert.equal(written.length, 1);
   assert.ok(
