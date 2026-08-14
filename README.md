@@ -68,23 +68,25 @@ document-ingestion + report pipeline and scores each against a human-verified an
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
-  `reports/<bucketId>/report-<timestamp>.pdf`, where `<timestamp>` is when that PDF-generation
-  run actually happened (not the eval's own `results.timestamp`) — so re-running against the
-  same `results.json` adds a new, distinctly timestamped file alongside any earlier ones instead
-  of overwriting them. On the rare case of two runs landing in the same second, a numeric suffix
-  (`-2`, `-3`, ...) is appended as a fallback. The PDF opens with a centered "Claim Eval Report"
-  title and a field list (bucket ID, ingestion time, processing time,
-  accuracy, generated-at), then the question-by-question breakdown — questions are numbered
-  sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then Unsure, then Not
-  Detected) rather than by their original ID, so the highest-risk findings read first. Each
-  block has a heading followed by labeled Risk Status, Match, Answer, and Reason fields,
-  separated by a divider between questions, laid out as full-width flowing paragraphs so a
-  single question's content stays together in reading order even across a page break; the
+  `reports/<bucketId>/report-<timestamp>.pdf`, where `<timestamp>` is the *local* time (not
+  UTC) that PDF-generation run actually happened (not the eval's own `results.timestamp`) — so
+  re-running against the same `results.json` adds a new, distinctly timestamped file alongside
+  any earlier ones instead of overwriting them. On the rare case of two runs landing in the same
+  second, a numeric suffix (`-2`, `-3`, ...) is appended as a fallback. The PDF opens with a
+  centered "Claim Eval Report" title and a field list (bucket ID, ingestion time, processing
+  time, accuracy, and "Generated at" — the same local timestamp used in the filename, labeled
+  "(local time)" so it's never mistaken for UTC), then the question-by-question breakdown —
+  questions are numbered sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then
+  Unsure, then Not Detected) rather than by their original ID, so the highest-risk findings read
+  first. Each block has a heading followed by labeled Risk Status, Match, Answer, and Reason
+  fields, separated by a divider between questions, laid out as full-width flowing paragraphs so
+  a single question's content stays together in reading order even across a page break; the
   redundant "RISK ...:" prefix the real report embeds at the start of each answer is stripped
   since risk status now has its own field. After that comes the claim-metadata match table
-  (`fraudRiskScore` and the three entity fields, expected vs. actual) and an overall summary. A
-  claim that gets skipped (no `bucketId`, or missing the data the PDF needs) is logged via
-  `console.error` with its `bucketId` and a reason, and `main()` prints a final
+  (`fraudRiskScore` and the three entity fields, expected vs. actual — field names are
+  humanized for display, e.g. `fraudRiskScore` reads as "Fraud Risk Score") and an overall
+  summary. A claim that gets skipped (no `bucketId`, or missing the data the PDF needs) is
+  logged via `console.error` with its `bucketId` and a reason, and `main()` prints a final
   `Wrote N report(s).` summary line, so a run that produces zero PDFs is never silent.
 
 ## Setup

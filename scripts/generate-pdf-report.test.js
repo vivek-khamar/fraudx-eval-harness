@@ -9,11 +9,18 @@ const { PDFParse } = require('pdf-parse');
 const {
   generatePdfReports,
   formatTimestampForFilename,
+  formatLocalTimestamp,
+  humanizeFieldName,
   formatRiskStatus,
   stripRiskStatusPrefix,
   sortByRiskStatus,
   uniqueFilePath,
 } = require('./generate-pdf-report');
+
+// Fixed to UTC so tests that feed a UTC instant (e.g. via FIXED_NOW below) get
+// deterministic, environment-independent "local time" output. Each test file
+// runs in its own process under node:test, so this doesn't leak to other files.
+process.env.TZ = 'UTC';
 
 function sampleResultsFile() {
   return {
@@ -75,6 +82,39 @@ const FIXED_NOW = () => new Date('2026-08-13T05:52:47.729Z');
 
 test('formatTimestampForFilename converts an ISO timestamp into a filesystem-safe string', () => {
   assert.equal(formatTimestampForFilename('2026-08-13T05:52:47.729Z'), '2026-08-13T05-52-47');
+});
+
+test('formatLocalTimestamp formats a Date using the process\'s local timezone, not UTC', (t) => {
+  const originalTz = process.env.TZ;
+  t.after(() => {
+    process.env.TZ = originalTz;
+  });
+
+  const instant = new Date('2026-08-13T05:52:47.000Z');
+
+  process.env.TZ = 'UTC';
+  assert.equal(formatLocalTimestamp(instant), '2026-08-13T05:52:47');
+
+  // Same instant, different local timezone (UTC-4 in August under EDT) — the
+  // formatted wall-clock time must actually shift, proving this reads local
+  // components rather than always rendering UTC under a different label.
+  process.env.TZ = 'America/New_York';
+  assert.equal(formatLocalTimestamp(instant), '2026-08-13T01:52:47');
+});
+
+test('formatLocalTimestamp zero-pads month, day, hour, minute, and second', () => {
+  process.env.TZ = 'UTC';
+  assert.equal(formatLocalTimestamp(new Date('2026-01-02T03:04:05.000Z')), '2026-01-02T03:04:05');
+});
+
+test('humanizeFieldName splits camelCase into title-cased words', () => {
+  assert.equal(humanizeFieldName('fraudRiskScore'), 'Fraud Risk Score');
+  assert.equal(humanizeFieldName('claimantName'), 'Claimant Name');
+  assert.equal(humanizeFieldName('insuranceFirm'), 'Insurance Firm');
+});
+
+test('humanizeFieldName leaves a single lowercase word capitalized but otherwise unchanged', () => {
+  assert.equal(humanizeFieldName('defendant'), 'Defendant');
 });
 
 test('formatRiskStatus replaces underscores with spaces', () => {
@@ -270,7 +310,7 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Claim Eval Report/);
   assert.doesNotMatch(text, /Claim Eval Report.*32023/);
   assert.match(text, /Bucket ID: 32023/);
-  assert.match(text, /Generated at: 2026-08-13T05:52:47\.729Z/);
+  assert.match(text, /Generated at: 2026-08-13T05:52:47 \(local time\)/);
   assert.match(text, /Is there fraud\?/);
   assert.match(text, /Risk Status: RISK DETECTED/);
   assert.match(text, /Answer: Yes, per doc X\./);
@@ -278,6 +318,12 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);
   assert.match(text, /One Team Restoration, Inc\./);
+  assert.match(text, /Fraud Risk Score/);
+  assert.match(text, /Claimant Name/);
+  assert.match(text, /Insurance Firm/);
+  assert.doesNotMatch(text, /fraudRiskScore/);
+  assert.doesNotMatch(text, /claimantName/);
+  assert.doesNotMatch(text, /insuranceFirm/);
 });
 
 test('generatePdfReports numbers questions sequentially in Detected/Unsure/Not-Detected order, not by predefinedQuestionId', async (t) => {

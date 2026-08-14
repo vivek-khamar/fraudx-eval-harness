@@ -13,6 +13,24 @@ function formatTimestampForFilename(isoTimestamp) {
   return isoTimestamp.replace(/:/g, '-').replace(/\.\d+Z$/, '');
 }
 
+// Formats a Date using its LOCAL wall-clock components (whichever timezone
+// the process is running in), not UTC — so the "Generated at" field and the
+// filename derived from it read as the time on the machine that ran this
+// script, not a UTC timestamp that can look like it's from "yesterday" or
+// "tomorrow" depending on the reader's own timezone.
+function formatLocalTimestamp(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
+
+function humanizeFieldName(camelCaseName) {
+  const spaced = camelCaseName.replace(/([a-z])([A-Z])/g, '$1 $2');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function formatRiskStatus(riskStatus) {
   return riskStatus ? riskStatus.replace(/_/g, ' ') : 'N/A';
 }
@@ -144,7 +162,7 @@ function renderClaimPdf(result, timestamp, filePath) {
   doc.text(`Ingestion time: ${ingestionTime}s`);
   doc.text(`Processing time: ${processingTime}s`);
   doc.text(`Accuracy: ${accuracy}`);
-  doc.text(`Generated at: ${timestamp}`);
+  doc.text(`Generated at: ${timestamp} (local time)`);
   doc.moveDown();
 
   doc.fontSize(14).text('Question-by-question results');
@@ -192,7 +210,7 @@ function renderClaimPdf(result, timestamp, filePath) {
   const mWidths = [110, 150, 150, 50];
   drawTableRow(doc, ['Field', 'Expected', 'Actual', 'Match'], mWidths);
   drawTableRow(doc, [
-    'fraudRiskScore',
+    humanizeFieldName('fraudRiskScore'),
     String(expected.fraudRiskScore),
     String(report.fraudRiskScore),
     fraudRiskScoreMatches(report.fraudRiskScore, expected.fraudRiskScore) ? 'YES' : 'NO',
@@ -203,7 +221,7 @@ function renderClaimPdf(result, timestamp, filePath) {
     ['insuranceFirm', expected.insuranceFirm, report.insuranceFirm],
   ];
   for (const [fieldName, exp, actual] of entityRows) {
-    drawTableRow(doc, [fieldName, exp, actual, entitiesMatch(actual, exp) ? 'YES' : 'NO'], mWidths);
+    drawTableRow(doc, [humanizeFieldName(fieldName), exp, actual, entitiesMatch(actual, exp) ? 'YES' : 'NO'], mWidths);
   }
   doc.moveDown();
 
@@ -229,7 +247,9 @@ async function generatePdfReports(resultsFilePath, reportsDir, now = () => new D
   // every run of this script — including a re-run against the very same
   // results.json — gets a filename reflecting when it actually ran, instead
   // of reusing the eval's frozen results.timestamp for every regeneration.
-  const generatedAt = now().toISOString();
+  // Uses local time (not UTC) so the filename and the "Generated at" field
+  // inside the PDF both read as the time on the machine that ran this script.
+  const generatedAt = formatLocalTimestamp(now());
 
   const written = [];
   for (const result of results) {
@@ -273,6 +293,8 @@ if (require.main === module) {
 module.exports = {
   generatePdfReports,
   formatTimestampForFilename,
+  formatLocalTimestamp,
+  humanizeFieldName,
   formatRiskStatus,
   stripRiskStatusPrefix,
   sortByRiskStatus,
