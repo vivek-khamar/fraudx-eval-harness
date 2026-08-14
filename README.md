@@ -170,8 +170,33 @@ FRAUDX_TEST_ENDPOINT=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com F
 
 ## CI
 
-Wrap `npm run eval` in a CI workflow step — nothing about the repo changes
-between local and CI execution.
+`.github/workflows/ci.yml` is a manual-dispatch-only GitHub Actions workflow (Actions tab →
+"Run workflow") — nothing runs automatically on push or pull request, since the full eval hits
+a live paid endpoint. Dispatching it prompts for a `mode`:
+
+- **`tests-only`** (default) — runs `npm test` only. No secrets required.
+- **`full-eval`** — runs `npm test` first (the `unit-tests` job), and only if that passes, runs
+  the real `npm run eval` against `FRAUDX_TEST_ENDPOINT` (the `full-eval` job, gated with
+  `needs: unit-tests`) — so a broken build fails in seconds instead of burning 30-60+ minutes of
+  real eval time. Generated PDF reports (`reports/**`) are uploaded as a workflow artifact, even
+  if the eval run itself "fails" (an assertion not meeting its pass bar is a real finding, not a
+  CI misconfiguration). Only one `full-eval` run can be in flight at a time
+  (`concurrency: fraudx-full-eval`) — the real platform has shared, account-level ingestion
+  limits, so overlapping real evals would contend with each other.
+
+  `full-eval` requires these repo (or environment) secrets: `FRAUDX_TEST_ENDPOINT`,
+  `FRAUDX_LOGIN_EMAIL`, `FRAUDX_LOGIN_PASSWORD`, `GRADER_PROVIDER`, and whichever of
+  `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` matches `GRADER_PROVIDER`'s value (both are passed
+  through; an unused one is simply ignored).
+
+  Dispatching `full-eval` also accepts three optional inputs — `newClaimName`,
+  `ingestionModelName`, `processingModelName` — to test a different claim name and/or
+  ingestion/processing model against the same golden claim's documents and answer key for that
+  one run, without editing `testdata/claims.json`. `ingestionModelName`/`processingModelName`
+  must be the exact `displayName` from the FraudX platform's model catalog (e.g.
+  `openai-gpt-5.4`) — plain model names collide across providers, so `displayName` (which embeds
+  the provider) is what's matched, exactly, not fuzzily. Leave all three blank to run the
+  committed golden claim(s) unchanged.
 
 ## Known environment limitations
 
