@@ -175,8 +175,8 @@ manual-dispatch-only GitHub Actions workflow (Actions tab → "Run workflow") �
 automatically on push or pull request, since the full eval hits a live paid endpoint.
 Dispatching it prompts for a `mode`:
 
-- **`tests-only`** (default) — runs `npm test` only. No secrets required.
-- **`full-eval`** — runs `npm test` first (the `unit-tests` job), and only if that passes, runs
+- **`tests-only`** — runs `npm test` only. No secrets required.
+- **`full-eval`** (default) — runs `npm test` first (the `unit-tests` job), and only if that passes, runs
   the real `npm run eval` against `FRAUDX_ENDPOINT_URI` (the `full-eval` job, gated with
   `needs: unit-tests`) — so a broken build fails in seconds instead of burning 30-60+ minutes of
   real eval time. Generated PDF reports (`reports/**`) are uploaded as a workflow artifact, even

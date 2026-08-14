@@ -10,7 +10,7 @@ on:
         options:
           - tests-only
           - full-eval
-        default: tests-only
+        default: full-eval
       newClaimName:
         description: 'Ad-hoc override: newClaimName for the golden claim (blank = use testdata/claims.json as committed)'
         required: false
