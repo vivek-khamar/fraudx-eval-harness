@@ -1,22 +1,22 @@
 'use strict';
 
 const fraudxClient = require('./fraudx-client');
+const { extractCitedFileNamesFromText } = require('./scripts/extract-cited-file-names');
 
 const DOCUMENT_TEXT_CHAR_LIMIT = 15000;
 
 function extractCitedFileNames(report) {
-  const fileNames = new Set();
-  const tagRegex = /<InTextCitation\b([^>]*)>/g;
+  const fileNames = [];
+  const seen = new Set();
   for (const q of report.questions) {
-    let match;
-    while ((match = tagRegex.exec(q.answer)) !== null) {
-      const fileNameMatch = /fileName="([^"]*)"/.exec(match[1]);
-      if (fileNameMatch) {
-        fileNames.add(decodeURIComponent(fileNameMatch[1]));
+    for (const fileName of extractCitedFileNamesFromText(q.answer)) {
+      if (!seen.has(fileName)) {
+        seen.add(fileName);
+        fileNames.push(fileName);
       }
     }
   }
-  return [...fileNames];
+  return fileNames;
 }
 
 class FraudXClaimProvider {
