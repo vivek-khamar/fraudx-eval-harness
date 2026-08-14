@@ -22,19 +22,35 @@ document-ingestion + report pipeline and scores each against a human-verified an
   math, just the raw millisecond values.
 - **Accuracy is graded inside promptfoo**, via three assertions applied to every test case (one
   per golden claim): `qa_match`, `report_quality`, and `metadata_match`.
-  - `qa_match` (`javascript`, `scripts/qa-match-assertion.js`) computes two independent signals
-    and reports both as named scores from a single assertion:
+  - `qa_match` (`javascript`, `scripts/qa-match-assertion.js`) computes up to three independent
+    signals and reports them as named scores from a single assertion:
     - `riskStatusMatch` (deterministic): the fraction of that claim's predefined questions whose
       `riskStatus` exactly matches the gold `expectedRiskStatus`.
     - `answerContentMatch` (LLM-graded): one rubric call PER QUESTION (not one batched call for
       all of a claim's questions) that judges that question's actual answer text against its gold
       `expectedAnswerSummary` for semantic (not exact-wording) match, and returns the fraction of
-      questions that match. The assertion also returns a `perQuestionBreakdown` array — one entry
-      per question with its `predefinedQuestionId`, `question`, `actualAnswer`, `matches`
-      (boolean), and `reason` (the grader's per-question reasoning) — which is what
-      `scripts/generate-pdf-report.js` renders in the question-by-question section of the PDF.
-    The assertion's own score is the average of the two; `pass` defaults to `score > 0` unless
-    a `threshold` is set on the `qa_match` assert entry in `promptfooconfig.yaml`.
+      questions that match.
+    - `citationMatch` (deterministic, optional per question): a question in `testdata/claims.json`
+      can set an `expectedCitedFileNames` array — the source document `fileName`(s) that support
+      its answer. For every question that sets it, `citationMatch` checks whether the real
+      answer's `<InTextCitation fileName="...">` tags include **at least one** of the expected
+      files (citing additional files beyond that doesn't count against it) — `documentId` on
+      those tags is per-ingestion and changes every run, so it's never used for comparison, only
+      `fileName` is. Questions that don't set `expectedCitedFileNames` are excluded from this
+      fraction. If *no* question in a claim sets it, `citationMatch` is `undefined` for that
+      claim (not `0`) and the accuracy formula below falls back to five signals.
+
+    The assertion also returns a `perQuestionBreakdown` array — one entry per question with its
+    `predefinedQuestionId`, `question`, `actualAnswer`, `matches` (boolean), `reason` (the
+    grader's per-question reasoning), `actualCitedFileNames`, `expectedCitedFileNames`, and
+    `citationMatches` (boolean, or `undefined` if that question wasn't graded for citations) —
+    which is what `scripts/generate-pdf-report.js` renders in the question-by-question section
+    of the PDF.
+
+    The assertion's own score is the average of `riskStatusMatch` and `answerContentMatch`, plus
+    `citationMatch` as a third term whenever at least one question in the claim was graded for
+    it; `pass` defaults to `score > 0` unless a `threshold` is set on the `qa_match` assert entry
+    in `promptfooconfig.yaml`.
   - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary and
     `citedDocumentsText` (fetched by `provider.js`, never from the answer key — see below) on
     completeness, clinical correctness, missing information, and groundedness (whether every claim
@@ -48,12 +64,15 @@ document-ingestion + report pipeline and scores each against a human-verified an
     - `entityFieldsMatch`: the fraction of `claimantName`, `defendant`, and `insuranceFirm` that
       match their `expected*` counterpart exactly, case- and whitespace-insensitively.
   `scripts/score-dashboard.js` (via its exported `computeAccuracy(namedScores)`, also reused by
-  `scripts/generate-pdf-report.js` so the two never drift apart) combines all five named scores as
-  equal fifths:
+  `scripts/generate-pdf-report.js` so the two never drift apart) combines the named scores as an
+  equal split. When `citationMatch` is a number (at least one question in the claim was graded
+  for citations), that's a 6-way split:
+  `acc = round((100/6)×(riskStatusMatch + answerContentMatch + report_quality + fraudRiskScoreMatch + entityFieldsMatch + citationMatch))`.
+  When `citationMatch` is `undefined` (no question in the claim sets `expectedCitedFileNames`),
+  it falls back to the original 5-way equal-fifths formula:
   `acc = round(20×riskStatusMatch + 20×answerContentMatch + 20×report_quality + 20×fraudRiskScoreMatch + 20×entityFieldsMatch)`.
-  `acc` numbers from before this scoring change (three signals, equal thirds) are not directly
-  comparable to `acc` numbers after it (five signals, equal fifths) — the weighting and underlying
-  signals both changed.
+  `acc` numbers computed under one formula are not directly comparable to `acc` numbers computed
+  under the other — the weighting and underlying signal count both differ.
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
 - **`provider.js` fetches the text of every document the real report actually cites** (not the
@@ -64,7 +83,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
   failing the run.
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
 - **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
-- **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `provider.js`'s `extractCitedFileNames` regex-extracts them (to decide which documents to fetch text for), and `report_quality` checks claims against that fetched text rather than matching on filename alone.
+- **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="...">` tags inside each answer's text, not a structured field. `scripts/extract-cited-file-names.js`'s `extractCitedFileNamesFromText` is the one place that regex-extracts `fileName` from these tags — `provider.js`'s `extractCitedFileNames` (to decide which documents to fetch text for `citedDocumentsText`) and `qa-match-assertion.js`'s `citationMatch` (per question) both call it. Only `fileName` is ever compared — `documentId` is assigned per-ingestion and differs on every eval run, so it can't identify a document across runs the way `fileName` can.
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
@@ -78,7 +97,8 @@ document-ingestion + report pipeline and scores each against a human-verified an
   "(local time)" so it's never mistaken for UTC), then the question-by-question breakdown —
   questions are numbered sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then
   Unsure, then Not Detected) rather than by their original ID, so the highest-risk findings read
-  first. Each block has a heading followed by labeled Risk Status, Match, Answer, and Reason
+  first. Each block has a heading followed by labeled Risk Status, Citation Match, Match, Answer,
+  and Reason
   fields, separated by a divider between questions, laid out as full-width flowing paragraphs so
   a single question's content stays together in reading order even across a page break; the
   redundant "RISK ...:" prefix the real report embeds at the start of each answer is stripped
