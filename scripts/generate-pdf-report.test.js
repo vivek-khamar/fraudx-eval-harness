@@ -166,7 +166,10 @@ test('generatePdfReports keeps a question\'s content together in reading order, 
   // flow across the page break within this one question's paragraph.
   const longReasonBegin = 'REASON-BEGIN-MARKER';
   const longReasonEnd = 'REASON-END-MARKER';
-  const longReason = `${longReasonBegin} ${'The grader compared the actual answer against the expected summary in detail. '.repeat(35)} ${longReasonEnd}`;
+  // Repeated 100x (~8,100 chars) — comfortably past this repo's real observed max
+  // answer/reason length (7,299 chars) — so this reliably forces a page break
+  // regardless of margins/font metrics, unlike a value merely close to one page.
+  const longReason = `${longReasonBegin} ${'The grader compared the actual answer against the expected summary in detail. '.repeat(100)} ${longReasonEnd}`;
   qaMatchComponent.perQuestionBreakdown = [
     { predefinedQuestionId: 1, question: 'FIRST-QUESTION-MARKER: Is there fraud?', actualAnswer: 'Yes, per doc X.', matches: true, reason: 'Short first reason.' },
     { predefinedQuestionId: 2, question: 'SECOND-QUESTION-MARKER: What is the claim status?', actualAnswer: 'Open, pending review.', matches: false, reason: longReason },
@@ -178,18 +181,26 @@ test('generatePdfReports keeps a question\'s content together in reading order, 
 
   const parser = new PDFParse({ data: fs.readFileSync(filePath) });
   let text;
-  let pageCount;
+  let pages;
   try {
     const result = await parser.getText();
     text = result.text;
-    pageCount = result.total ?? result.pages?.length;
+    pages = result.pages;
   } finally {
     await parser.destroy();
   }
 
+  const pageOf = (marker) => pages.find((p) => p.text.includes(marker))?.num;
+  const beginPage = pageOf(longReasonBegin);
+  const endPage = pageOf(longReasonEnd);
+
   // Sanity check that this fixture actually exercises a page break — otherwise the
   // ordering/truncation assertions below wouldn't be testing anything meaningful.
-  assert.ok(pageCount === undefined || pageCount > 1, `expected the long reason to force a multi-page PDF, got ${pageCount} page(s)`);
+  assert.ok(pages.length > 1, `expected the long reason to force a multi-page PDF, got ${pages.length} page(s)`);
+  assert.ok(
+    beginPage !== undefined && endPage !== undefined && beginPage < endPage,
+    `expected the long reason to actually straddle a page break (begin on page ${beginPage}, end on page ${endPage})`
+  );
 
   assert.match(text, /FIRST-QUESTION-MARKER/);
   assert.match(text, /SECOND-QUESTION-MARKER/);

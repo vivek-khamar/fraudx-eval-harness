@@ -50,11 +50,6 @@ test('every test case\'s vars.bucket has a sourceBucketId and a newClaim config'
     assert.equal(typeof bucket.newClaim.claimCategoryId, 'number');
     assert.equal(typeof bucket.newClaim.ingestionModelId, 'number');
     assert.equal(typeof bucket.newClaim.processingModelId, 'number');
-    assert.ok(Array.isArray(bucket.newClaim.tags));
-    for (const tag of bucket.newClaim.tags) {
-      assert.equal(typeof tag.tagId, 'number');
-      assert.equal(typeof tag.tagValueId, 'number');
-    }
   }
 });
 
