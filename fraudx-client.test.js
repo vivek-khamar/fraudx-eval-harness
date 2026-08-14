@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, triggerJobProcessing, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing, fetchReport, extractPdfText } = require('./fraudx-client');
+const { login, postDocumentList, listBucketDocuments, contentTypeForExtension, getDownloadUrl, downloadFile, createClaim, requestUploadUrls, uploadFile, triggerJobProcessing, findDocumentByJobId, waitForDocumentUpload, listGxBuckets, getBucketDetails, triggerClaimProcessing, waitForClaimProcessing, fetchReport, extractPdfText, searchModels } = require('./fraudx-client');
 
 function withFetchMock(t, impl) {
   const original = global.fetch;
@@ -534,4 +534,59 @@ test('extractPdfText releases the parser after extracting', async () => {
   // A page with no content stream at all must not throw — just return whatever text pdf.js finds (likely empty).
   const text = await extractPdfText(bytes);
   assert.equal(typeof text, 'string');
+});
+
+test('searchModels posts the type filter and returns response.content', async (t) => {
+  withFetchMock(t, async (url, opts) => {
+    assert.equal(url, 'https://fake.fraudx.test/fraudx/api/v1/models/search');
+    assert.deepEqual(JSON.parse(opts.body), {
+      page: 0,
+      size: 10000,
+      criteriaOperator: 'AND',
+      criteria: [{ column: 'types.name', operator: 'EQUALS', values: ['INGESTION'] }],
+    });
+    assert.equal(opts.headers.Authorization, 'Bearer t');
+    assert.equal(opts.headers['x-org-id'], '1');
+    assert.equal(opts.headers['x-user-id'], '68');
+    return {
+      ok: true,
+      json: async () => ({
+        response: {
+          content: [
+            { id: 1, name: 'gpt-5.1', displayName: 'openai-gpt-5.1', types: [{ id: 3, name: 'INGESTION' }] },
+          ],
+        },
+      }),
+    };
+  });
+  const content = await searchModels('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, 'INGESTION', 5000);
+  assert.deepEqual(content, [{ id: 1, name: 'gpt-5.1', displayName: 'openai-gpt-5.1', types: [{ id: 3, name: 'INGESTION' }] }]);
+});
+
+test('searchModels throws a clear error on non-2xx', async (t) => {
+  withFetchMock(t, async () => ({ ok: false, status: 500, text: async () => 'server error' }));
+  await assert.rejects(
+    () => searchModels('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, 'PROCESSING', 5000),
+    /Searching models for type PROCESSING failed: 500 server error/
+  );
+});
+
+test('searchModels throws a clear error when the response has no response.content', async (t) => {
+  withFetchMock(t, async () => ({ ok: true, json: async () => ({ response: {} }) }));
+  await assert.rejects(
+    () => searchModels('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, 'INGESTION', 5000),
+    /did not contain response\.content/
+  );
+});
+
+test('searchModels throws a clear error on timeout', async (t) => {
+  withFetchMock(t, async () => {
+    const err = new Error('aborted');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+  await assert.rejects(
+    () => searchModels('https://fake.fraudx.test', { token: 't', orgId: 1, userId: 68 }, 'INGESTION', 5000),
+    /Searching models for type INGESTION timed out after 5000ms/
+  );
 });

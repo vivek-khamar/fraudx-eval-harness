@@ -456,6 +456,42 @@ async function fetchReport(base, reportId, auth, timeoutMs) {
   return body.response;
 }
 
+async function searchModels(base, auth, typeName, timeoutMs) {
+  let res;
+  try {
+    res = await fetchWithRetry(`${base}/fraudx/api/v1/models/search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+        'x-org-id': String(auth.orgId),
+        'x-user-id': String(auth.userId),
+      },
+      body: JSON.stringify({
+        page: 0,
+        size: 10000,
+        criteriaOperator: 'AND',
+        criteria: [{ column: 'types.name', operator: 'EQUALS', values: [typeName] }],
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Searching models for type ${typeName} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Searching models for type ${typeName} failed: ${res.status} ${await res.text()}`);
+  }
+  const body = await res.json();
+  const content = body?.response?.content;
+  if (!Array.isArray(content)) {
+    throw new Error(`Models-search response for type ${typeName} did not contain response.content`);
+  }
+  return content;
+}
+
 module.exports = {
   login,
   postDocumentList,
@@ -475,4 +511,5 @@ module.exports = {
   triggerClaimProcessing,
   waitForClaimProcessing,
   fetchReport,
+  searchModels,
 };
