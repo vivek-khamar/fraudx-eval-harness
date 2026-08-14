@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Which flow to run'
+        required: true
+        type: choice
+        options:
+          - tests-only
+          - full-eval
+        default: tests-only
+      newClaimName:
+        description: 'Ad-hoc override: newClaimName for the golden claim (blank = use testdata/claims.json as committed)'
+        required: false
+        type: string
+        default: ''
+      ingestionModelName:
+        description: 'Ad-hoc override: exact displayName of the ingestion model to use (blank = no override)'
+        required: false
+        type: string
+        default: ''
+      processingModelName:
+        description: 'Ad-hoc override: exact displayName of the processing model to use (blank = no override)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  full-eval:
+    needs: unit-tests
+    if: ${{ inputs.mode == 'full-eval' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    concurrency:
+      group: fraudx-full-eval
+      cancel-in-progress: false
+    env:
+      FRAUDX_TEST_ENDPOINT: ${{ secrets.FRAUDX_TEST_ENDPOINT }}
+      FRAUDX_LOGIN_EMAIL: ${{ secrets.FRAUDX_LOGIN_EMAIL }}
+      FRAUDX_LOGIN_PASSWORD: ${{ secrets.FRAUDX_LOGIN_PASSWORD }}
+      GRADER_PROVIDER: ${{ secrets.GRADER_PROVIDER }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+      - run: npm ci
+      - name: Apply ad-hoc claim overrides
+        if: ${{ inputs.newClaimName != '' || inputs.ingestionModelName != '' || inputs.processingModelName != '' }}
+        env:
+          ADHOC_NEW_CLAIM_NAME: ${{ inputs.newClaimName }}
+          ADHOC_INGESTION_MODEL_NAME: ${{ inputs.ingestionModelName }}
+          ADHOC_PROCESSING_MODEL_NAME: ${{ inputs.processingModelName }}
+        run: node scripts/apply-adhoc-claim-overrides.js
+      - run: npm run eval
+      - name: Upload PDF reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: reports/**
+          if-no-files-found: ignore
