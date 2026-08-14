@@ -93,7 +93,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
 
 ```bash
 npm install
-cp .env.example .env   # fill in FRAUDX_TEST_ENDPOINT and ANTHROPIC_API_KEY
+cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI and ANTHROPIC_API_KEY
 ```
 
 ## Running against the real FraudX platform
@@ -103,7 +103,7 @@ npm run eval
 ```
 
 - `npm run eval` runs `npm run eval:raw` (which runs `promptfoo eval` against
-  `FRAUDX_TEST_ENDPOINT`, grades the result, and writes `results.json`) and then
+  `FRAUDX_ENDPOINT_URI`, grades the result, and writes `results.json`) and then
   `npm run score`. `--no-cache` is required — promptfoo caches provider responses
   by default, and a cached "response" would mean `provider.js` never actually
   calls your endpoint on a re-run, silently returning stale timing data that would
@@ -165,7 +165,7 @@ whole pipeline run end to end:
 
 ```bash
 npm run mock-server                        # terminal 1 — leave running
-FRAUDX_TEST_ENDPOINT=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock npm run eval   # terminal 2
+FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock npm run eval   # terminal 2
 ```
 
 ## CI
@@ -176,7 +176,7 @@ a live paid endpoint. Dispatching it prompts for a `mode`:
 
 - **`tests-only`** (default) — runs `npm test` only. No secrets required.
 - **`full-eval`** — runs `npm test` first (the `unit-tests` job), and only if that passes, runs
-  the real `npm run eval` against `FRAUDX_TEST_ENDPOINT` (the `full-eval` job, gated with
+  the real `npm run eval` against `FRAUDX_ENDPOINT_URI` (the `full-eval` job, gated with
   `needs: unit-tests`) — so a broken build fails in seconds instead of burning 30-60+ minutes of
   real eval time. Generated PDF reports (`reports/**`) are uploaded as a workflow artifact, even
   if the eval run itself "fails" (an assertion not meeting its pass bar is a real finding, not a
@@ -184,7 +184,7 @@ a live paid endpoint. Dispatching it prompts for a `mode`:
   (`concurrency: fraudx-full-eval`) — the real platform has shared, account-level ingestion
   limits, so overlapping real evals would contend with each other.
 
-  `full-eval` requires these repo (or environment) secrets: `FRAUDX_TEST_ENDPOINT`,
+  `full-eval` requires these repo (or environment) secrets: `FRAUDX_ENDPOINT_URI`,
   `FRAUDX_LOGIN_EMAIL`, `FRAUDX_LOGIN_PASSWORD`, `GRADER_PROVIDER`, and whichever of
   `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` matches `GRADER_PROVIDER`'s value (both are passed
   through; an unused one is simply ignored).

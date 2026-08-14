@@ -24,7 +24,7 @@ async function applyAdhocClaimOverrides(claimsPath) {
   let ingestionModelId;
   let processingModelId;
   if (ingestionModelName || processingModelName) {
-    const base = process.env.FRAUDX_TEST_ENDPOINT;
+    const base = process.env.FRAUDX_ENDPOINT_URI;
     const timeoutMs = Number(process.env.FRAUDX_HTTP_TIMEOUT_MS || 900000);
     const auth = await fraudxClient.login(base, timeoutMs);
     if (ingestionModelName) {

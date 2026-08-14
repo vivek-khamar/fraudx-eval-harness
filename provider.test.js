@@ -99,9 +99,9 @@ test('extractCitedFileNames returns an empty array when no answers have citation
 });
 
 test('callApi orchestrates the full sequence in order and returns the report', async (t) => {
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   const calls = [];
   mockFraudxClient(t, happyPathMocks(calls));
@@ -132,9 +132,9 @@ test('callApi measures ingestion (the upload loop) and processing (claim trigger
   // With skipGxProcess:false, each document's own GX ingestion completes during the upload loop —
   // fileMetrics.completedFiles reaches 5/5 before triggerClaimProcessing is ever called. Ingestion
   // time must reflect that loop's own duration, not be a copy of the later claim-processing duration.
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   mockFraudxClient(t, {
@@ -160,9 +160,9 @@ test('callApi measures ingestion (the upload loop) and processing (claim trigger
 });
 
 test('callApi never reads or transmits context.vars.expected', async (t) => {
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   const seenArgs = [];
   mockFraudxClient(t, {
@@ -181,19 +181,19 @@ test('callApi never reads or transmits context.vars.expected', async (t) => {
   }
 });
 
-test('callApi throws a clear error when FRAUDX_TEST_ENDPOINT is not set', async () => {
-  delete process.env.FRAUDX_TEST_ENDPOINT;
+test('callApi throws a clear error when FRAUDX_ENDPOINT_URI is not set', async () => {
+  delete process.env.FRAUDX_ENDPOINT_URI;
   const provider = new Provider();
-  await assert.rejects(() => provider.callApi('x', fakeContext()), /FRAUDX_TEST_ENDPOINT is not set/);
+  await assert.rejects(() => provider.callApi('x', fakeContext()), /FRAUDX_ENDPOINT_URI is not set/);
 });
 
 test('callApi requests each document\'s upload URL individually, right before uploading it, not all upfront', async (t) => {
   // Presigned upload URLs go stale within minutes on the real platform, but each document can now
   // take minutes of real GX processing before the next one's turn comes up — requesting all upload
   // URLs in one batch before the loop starts would let later documents' URLs expire unused.
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   const requestUploadUrlsCalls = [];
   mockFraudxClient(t, {
@@ -217,9 +217,9 @@ test('callApi requests each document\'s upload URL individually, right before up
 });
 
 test('callApi throws when no upload URL matches a source document\'s fileName', async (t) => {
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   mockFraudxClient(t, {
     ...happyPathMocks([]),
@@ -231,9 +231,9 @@ test('callApi throws when no upload URL matches a source document\'s fileName', 
 });
 
 test('callApi fetches text only for documents actually cited in the real report, truncated to 15000 chars', async (t) => {
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   const getDownloadUrlCalls = [];
   // The pre-existing ingestion loop uploads every document in sourceDocs (including uncited.pdf) into
@@ -276,9 +276,9 @@ test('callApi fetches text only for documents actually cited in the real report,
 });
 
 test('callApi skips a cited fileName it cannot match to a source document, without failing the run', async (t) => {
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   mockFraudxClient(t, {
     ...happyPathMocks([]),
@@ -296,9 +296,9 @@ test('callApi skips a cited fileName it cannot match to a source document, witho
 });
 
 test('callApi returns an empty citedDocumentsText when the report has no citations', async (t) => {
-  process.env.FRAUDX_TEST_ENDPOINT = 'https://fake.fraudx.test';
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
-    delete process.env.FRAUDX_TEST_ENDPOINT;
+    delete process.env.FRAUDX_ENDPOINT_URI;
   });
   mockFraudxClient(t, happyPathMocks([]));
 

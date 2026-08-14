@@ -94,7 +94,7 @@ test('applyAdhocClaimOverrides resolves and overrides only ingestionModelId when
     ADHOC_NEW_CLAIM_NAME: undefined,
     ADHOC_INGESTION_MODEL_NAME: 'openai-gpt-5.4',
     ADHOC_PROCESSING_MODEL_NAME: undefined,
-    FRAUDX_TEST_ENDPOINT: 'https://fake.fraudx.test',
+    FRAUDX_ENDPOINT_URI: 'https://fake.fraudx.test',
   });
   mockFraudxClient(t, {
     login: async () => ({ token: 't', orgId: 1, userId: 68 }),
@@ -122,7 +122,7 @@ test('applyAdhocClaimOverrides resolves and overrides only processingModelId whe
     ADHOC_NEW_CLAIM_NAME: undefined,
     ADHOC_INGESTION_MODEL_NAME: undefined,
     ADHOC_PROCESSING_MODEL_NAME: 'openai-gpt-4o',
-    FRAUDX_TEST_ENDPOINT: 'https://fake.fraudx.test',
+    FRAUDX_ENDPOINT_URI: 'https://fake.fraudx.test',
   });
   mockFraudxClient(t, {
     login: async () => ({ token: 't', orgId: 1, userId: 68 }),
@@ -150,7 +150,7 @@ test('applyAdhocClaimOverrides propagates a clear error when the displayName doe
     ADHOC_NEW_CLAIM_NAME: undefined,
     ADHOC_INGESTION_MODEL_NAME: 'nonexistent-model',
     ADHOC_PROCESSING_MODEL_NAME: undefined,
-    FRAUDX_TEST_ENDPOINT: 'https://fake.fraudx.test',
+    FRAUDX_ENDPOINT_URI: 'https://fake.fraudx.test',
   });
   mockFraudxClient(t, {
     login: async () => ({ token: 't', orgId: 1, userId: 68 }),

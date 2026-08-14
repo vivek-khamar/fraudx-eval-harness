@@ -48,7 +48,7 @@ jobs:
       group: fraudx-full-eval
       cancel-in-progress: false
     env:
-      FRAUDX_TEST_ENDPOINT: ${{ secrets.FRAUDX_TEST_ENDPOINT }}
+      FRAUDX_ENDPOINT_URI: ${{ secrets.FRAUDX_ENDPOINT_URI }}
       FRAUDX_LOGIN_EMAIL: ${{ secrets.FRAUDX_LOGIN_EMAIL }}
       FRAUDX_LOGIN_PASSWORD: ${{ secrets.FRAUDX_LOGIN_PASSWORD }}
       GRADER_PROVIDER: ${{ secrets.GRADER_PROVIDER }}

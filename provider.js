@@ -25,9 +25,9 @@ class FraudXClaimProvider {
   }
 
   async callApi(prompt, context) {
-    const base = process.env.FRAUDX_TEST_ENDPOINT;
+    const base = process.env.FRAUDX_ENDPOINT_URI;
     if (!base) {
-      throw new Error('FRAUDX_TEST_ENDPOINT is not set. Copy .env.example to .env and fill it in.');
+      throw new Error('FRAUDX_ENDPOINT_URI is not set. Copy .env.example to .env and fill it in.');
     }
     const timeoutMs = Number(process.env.FRAUDX_HTTP_TIMEOUT_MS || 900000);
     const auth = await fraudxClient.login(base, timeoutMs);
