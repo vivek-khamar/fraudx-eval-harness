@@ -5,11 +5,11 @@
   "private": true,
   "scripts": {
     "pretest": "npm run generate:tests",
-    "test": "node --test provider.test.js config-shape.test.js scripts/score-dashboard.test.js scripts/qa-match-assertion.test.js fraudx-client.test.js scripts/generate-tests-vars.test.js",
+    "test": "node --test provider.test.js config-shape.test.js scripts/score-dashboard.test.js scripts/qa-match-assertion.test.js scripts/metadata-match-assertion.test.js scripts/generate-pdf-report.test.js fraudx-client.test.js scripts/generate-tests-vars.test.js",
     "generate:tests": "node scripts/generate-tests-vars.js",
     "preeval": "npm run generate:tests",
     "eval:raw": "PROMPTFOO_CACHE_ENABLED=false promptfoo eval -c promptfooconfig.yaml --no-cache --max-concurrency 1 --output results.json",
-    "score": "node scripts/score-dashboard.js",
+    "score": "node scripts/score-dashboard.js && node scripts/generate-pdf-report.js",
     "eval": "npm run eval:raw; code=$?; npm run score; exit $code",
     "mock-server": "node test/mock-server.js"
   },
