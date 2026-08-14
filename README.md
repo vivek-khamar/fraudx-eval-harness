@@ -170,9 +170,10 @@ FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FR
 
 ## CI
 
-`.github/workflows/ci.yml` is a manual-dispatch-only GitHub Actions workflow (Actions tab →
-"Run workflow") — nothing runs automatically on push or pull request, since the full eval hits
-a live paid endpoint. Dispatching it prompts for a `mode`:
+`.github/workflows/eval-workflow.yml` ("Eval Workflow" in the Actions tab) is a
+manual-dispatch-only GitHub Actions workflow (Actions tab → "Run workflow") — nothing runs
+automatically on push or pull request, since the full eval hits a live paid endpoint.
+Dispatching it prompts for a `mode`:
 
 - **`tests-only`** (default) — runs `npm test` only. No secrets required.
 - **`full-eval`** — runs `npm test` first (the `unit-tests` job), and only if that passes, runs

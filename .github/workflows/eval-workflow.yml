@@ -1,4 +1,4 @@
-name: CI
+name: Eval Workflow
 
 on:
   workflow_dispatch:
