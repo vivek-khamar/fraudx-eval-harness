@@ -101,6 +101,29 @@ test('generatePdfReports skips a claim with no bucketId (errored before a report
   assert.ok(!fs.existsSync(reportsDir));
 });
 
+test('generatePdfReports skips a claim with a bucketId but missing gradingResult.namedScores, and still writes the PDF for a healthy claim later in the same file', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const malformedClaim = sampleResultsFile().results.results[0];
+  malformedClaim.response.output.report.bucketId = 99999;
+  delete malformedClaim.gradingResult.namedScores;
+  // Put the malformed claim first so a naive implementation that throws
+  // on it would abort before ever reaching the healthy claim below.
+  fixture.results.results.unshift(malformedClaim);
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const written = await generatePdfReports(resultsPath, reportsDir);
+
+  assert.equal(written.length, 1);
+  assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
+  assert.ok(fs.existsSync(written[0]));
+  assert.ok(!fs.existsSync(path.join(reportsDir, '99999')));
+});
+
 test('generatePdfReports writes a PDF whose text includes the bucketId, question text, entity names, and report_quality reasoning', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -125,4 +148,32 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);
   assert.match(text, /One Team Restoration, Inc\./);
+});
+
+test('generatePdfReports renders the fallback text (not the literal string "undefined") when the report_quality component has no reason field', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const reportQualityComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'report_quality'
+  );
+  delete reportQualityComponent.reason;
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.match(text, /\(no report_quality reasoning available\)/);
+  assert.doesNotMatch(text, /undefined/);
 });

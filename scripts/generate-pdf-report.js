@@ -37,6 +37,36 @@ function findComponent(gradingResult, metric) {
   return (gradingResult.componentResults || []).find((c) => c.assertion && c.assertion.metric === metric);
 }
 
+const REQUIRED_NAMED_SCORES = [
+  'riskStatusMatch',
+  'answerContentMatch',
+  'report_quality',
+  'fraudRiskScoreMatch',
+  'entityFieldsMatch',
+];
+
+function hasRequiredNamedScores(namedScores) {
+  return REQUIRED_NAMED_SCORES.every(
+    (key) => typeof namedScores?.[key] === 'number' && !Number.isNaN(namedScores[key])
+  );
+}
+
+// Mirrors the defensive shape-check in scripts/score-dashboard.js: a claim can have a
+// bucketId (so it got past the "did the report even get created" check) yet still be
+// missing the data renderClaimPdf needs, e.g. a gradingResult that never ran to
+// completion. Skip such claims instead of letting renderClaimPdf throw and abort the
+// whole run — the rest of the file's claims should still get their PDFs written.
+function isClaimRenderable(result) {
+  const output = result.response?.output;
+  return Boolean(
+    output &&
+    output.ingestion &&
+    output.processing &&
+    result.vars?.expected &&
+    hasRequiredNamedScores(result.gradingResult?.namedScores)
+  );
+}
+
 function renderClaimPdf(result, timestamp, filePath) {
   const output = result.response.output;
   const report = output.report;
@@ -105,7 +135,7 @@ function renderClaimPdf(result, timestamp, filePath) {
   doc.fontSize(14).text('Overall summary');
   doc.moveDown(0.5);
   doc.fontSize(10);
-  doc.text(reportQualityComponent ? reportQualityComponent.reason : '(no report_quality reasoning available)');
+  doc.text(reportQualityComponent && reportQualityComponent.reason ? reportQualityComponent.reason : '(no report_quality reasoning available)');
 
   doc.end();
   return new Promise((resolve, reject) => {
@@ -124,6 +154,9 @@ async function generatePdfReports(resultsFilePath, reportsDir) {
   for (const result of results) {
     const bucketId = result.response?.output?.report?.bucketId;
     if (bucketId === undefined) {
+      continue;
+    }
+    if (!isClaimRenderable(result)) {
       continue;
     }
     const fileName = `report-${formatTimestampForFilename(timestamp)}.pdf`;
