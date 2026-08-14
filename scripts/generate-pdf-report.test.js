@@ -15,6 +15,7 @@ const {
   stripRiskStatusPrefix,
   sortByRiskStatus,
   uniqueFilePath,
+  formatCitationMatch,
 } = require('./generate-pdf-report');
 
 // Fixed to UTC so tests that feed a UTC instant (e.g. via FIXED_NOW below) get
@@ -173,6 +174,28 @@ test('sortByRiskStatus does not mutate the input array', () => {
   assert.deepEqual(input, copy);
 });
 
+test('formatCitationMatch renders YES for a matching citation', () => {
+  assert.equal(formatCitationMatch({ citationMatches: true }), 'YES');
+});
+
+test('formatCitationMatch renders NO with expected/actual fileNames for a non-matching citation', () => {
+  assert.equal(
+    formatCitationMatch({ citationMatches: false, expectedCitedFileNames: ['a.pdf', 'b.pdf'], actualCitedFileNames: ['c.pdf'] }),
+    'NO (expected one of: a.pdf, b.pdf; got: c.pdf)'
+  );
+});
+
+test('formatCitationMatch shows (none) when a non-matching question actually cited nothing', () => {
+  assert.equal(
+    formatCitationMatch({ citationMatches: false, expectedCitedFileNames: ['a.pdf'], actualCitedFileNames: [] }),
+    'NO (expected one of: a.pdf; got: (none))'
+  );
+});
+
+test('formatCitationMatch renders Not graded when citationMatches is undefined', () => {
+  assert.equal(formatCitationMatch({ citationMatches: undefined }), 'Not graded');
+});
+
 test('uniqueFilePath returns the given path unchanged when nothing exists there yet', (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'unique-file-path-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -315,6 +338,7 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Risk Status: RISK DETECTED/);
   assert.match(text, /Answer: Yes, per doc X\./);
   assert.doesNotMatch(text, /RISK DETECTED: Yes, per doc X\./, 'the risk-status prefix should be stripped from the rendered answer text');
+  assert.match(text, /Citation Match: Not graded/);
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);
   assert.match(text, /One Team Restoration, Inc\./);
@@ -486,4 +510,39 @@ test('generatePdfReports logs a console.error mentioning the bucketId of a claim
     errorCalls.some((message) => message.includes('88888')),
     `expected a console.error call mentioning bucketId 88888, got: ${JSON.stringify(errorCalls)}`
   );
+});
+
+test('generatePdfReports renders Citation Match as YES, NO (with expected/actual fileNames), and Not graded per question', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const qaMatchComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'qa_match'
+  );
+  qaMatchComponent.perQuestionBreakdown = [
+    { predefinedQuestionId: 1, question: 'MATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', matches: true, reason: 'r', actualCitedFileNames: ['a.pdf'], expectedCitedFileNames: ['a.pdf'], citationMatches: true },
+    { predefinedQuestionId: 2, question: 'MISMATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', matches: true, reason: 'r', actualCitedFileNames: ['c.pdf'], expectedCitedFileNames: ['a.pdf', 'b.pdf'], citationMatches: false },
+    { predefinedQuestionId: 3, question: 'UNGRADED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', matches: true, reason: 'r', actualCitedFileNames: ['z.pdf'], expectedCitedFileNames: undefined, citationMatches: undefined },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  // Risk-status ordering puts MATCHED (RISK_DETECTED) first, MISMATCHED (UNSURE) second,
+  // UNGRADED (RISK_NOT_DETECTED) third — so these markers already appear in this order.
+  assert.match(text, /MATCHED-QUESTION[\s\S]*?Citation Match: YES/);
+  assert.match(text, /MISMATCHED-QUESTION[\s\S]*?Citation Match: NO \(expected one of: a\.pdf, b\.pdf; got: c\.pdf\)/);
+  assert.match(text, /UNGRADED-QUESTION[\s\S]*?Citation Match: Not graded/);
 });

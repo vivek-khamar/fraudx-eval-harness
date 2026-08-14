@@ -35,6 +35,18 @@ function formatRiskStatus(riskStatus) {
   return riskStatus ? riskStatus.replace(/_/g, ' ') : 'N/A';
 }
 
+function formatCitationMatch(entry) {
+  if (entry.citationMatches === undefined) {
+    return 'Not graded';
+  }
+  if (entry.citationMatches) {
+    return 'YES';
+  }
+  const expected = (entry.expectedCitedFileNames || []).join(', ') || '(none)';
+  const actual = (entry.actualCitedFileNames || []).join(', ') || '(none)';
+  return `NO (expected one of: ${expected}; got: ${actual})`;
+}
+
 // The real report embeds a human-readable risk-status label at the start of
 // each answer's text (e.g. "RISK DETECTED: ...", "RISK UNKNOWN: ..."). Now
 // that riskStatus is its own field, strip the redundant prefix from the
@@ -186,6 +198,7 @@ function renderClaimPdf(result, timestamp, filePath) {
     doc.fontSize(11).font('Helvetica-Bold').text(`Q${index + 1}: ${entry.question}`, { width: usableWidth });
     doc.moveDown(0.5);
     field('Risk Status: ', formatRiskStatus(entry.riskStatus));
+    field('Citation Match: ', formatCitationMatch(entry));
     field('Match: ', entry.matches ? 'YES' : 'NO');
     field('Answer: ', stripRiskStatusPrefix(entry.actualAnswer));
     field('Reason: ', entry.reason);
@@ -299,4 +312,5 @@ module.exports = {
   stripRiskStatusPrefix,
   sortByRiskStatus,
   uniqueFilePath,
+  formatCitationMatch,
 };
