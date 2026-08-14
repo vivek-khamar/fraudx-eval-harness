@@ -93,7 +93,8 @@ document-ingestion + report pipeline and scores each against a human-verified an
 
 ```bash
 npm install
-cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI and ANTHROPIC_API_KEY
+cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, and CLAIM_NAME/
+                        # INGESTION_MODEL_NAME/PROCESSING_MODEL_NAME (see .env.example)
 ```
 
 ## Running against the real FraudX platform
@@ -102,6 +103,16 @@ cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI and ANTHROPIC_API_KEY
 npm run eval
 ```
 
+- Before anything else, `npm run eval`'s `preeval` hook runs
+  `scripts/apply-claim-config.js`, which reads `CLAIM_NAME`, `INGESTION_MODEL_NAME`,
+  and `PROCESSING_MODEL_NAME` from your environment, resolves the two model
+  `displayName`s to platform IDs (via `POST /fraudx/api/v1/models/search`), and writes
+  `newClaimName`/`ingestionModelId`/`processingModelId` into every claim in
+  `testdata/claims.json` — then regenerates `tests.vars.yaml` from the updated file.
+  `testdata/claims.json` deliberately ships with no default for these three fields (a
+  claim name can't be reused on the real platform, and the model choice is a per-run
+  decision, not a fixed answer-key fact), so the eval fails fast with a clear error if
+  any of the three env vars is unset.
 - `npm run eval` runs `npm run eval:raw` (which runs `promptfoo eval` against
   `FRAUDX_ENDPOINT_URI`, grades the result, and writes `results.json`) and then
   `npm run score`. `--no-cache` is required — promptfoo caches provider responses
@@ -165,7 +176,9 @@ whole pipeline run end to end:
 
 ```bash
 npm run mock-server                        # terminal 1 — leave running
-FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock npm run eval   # terminal 2
+FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock \
+  CLAIM_NAME=mock-claim INGESTION_MODEL_NAME=mock-ingestion-model PROCESSING_MODEL_NAME=mock-processing-model \
+  npm run eval   # terminal 2
 ```
 
 ## CI
@@ -190,14 +203,16 @@ Dispatching it prompts for a `mode`:
   `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` matches `GRADER_PROVIDER`'s value (both are passed
   through; an unused one is simply ignored).
 
-  Dispatching `full-eval` also accepts three optional inputs — `newClaimName`,
-  `ingestionModelName`, `processingModelName` — to test a different claim name and/or
-  ingestion/processing model against the same golden claim's documents and answer key for that
-  one run, without editing `testdata/claims.json`. `ingestionModelName`/`processingModelName`
-  must be the exact `displayName` from the FraudX platform's model catalog (e.g.
-  `openai-gpt-5.4`) — plain model names collide across providers, so `displayName` (which embeds
-  the provider) is what's matched, exactly, not fuzzily. Leave all three blank to run the
-  committed golden claim(s) unchanged.
+  Dispatching `full-eval` also requires three inputs — `newClaimName`, `ingestionModelName`,
+  `processingModelName` — since `testdata/claims.json` has no default claim name or model IDs
+  (a claim name can't be reused on the real platform, and the model choice is a per-run
+  decision). These feed `CLAIM_NAME`/`INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME`, which
+  `npm run eval`'s `preeval` hook (`scripts/apply-claim-config.js`) reads and resolves before
+  every run, local or CI — leaving any of the three blank fails the run immediately with a
+  clear error naming what's missing. `ingestionModelName`/`processingModelName` must be the
+  exact `displayName` from the FraudX platform's model catalog (e.g. `openai-gpt-5.4`) — plain
+  model names collide across providers, so `displayName` (which embeds the provider) is what's
+  matched, exactly, not fuzzily.
 
 ## Known environment limitations
 

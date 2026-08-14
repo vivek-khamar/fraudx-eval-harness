@@ -63,6 +63,20 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && req.url === '/fraudx/api/v1/models/search') {
+      const typeName = ((parsedBody.criteria || [])[0] || {}).values?.[0];
+      res.writeHead(200);
+      res.end(JSON.stringify({
+        response: {
+          content: [
+            { id: 1, name: 'gpt-4o', displayName: 'mock-ingestion-model', types: [{ id: 1, name: 'INGESTION' }] },
+            { id: 9, name: 'gpt-4o', displayName: 'mock-processing-model', types: [{ id: 2, name: 'PROCESSING' }] },
+          ].filter((m) => m.types.some((t) => t.name === typeName)),
+        },
+      }));
+      return;
+    }
+
     if (req.method === 'POST' && req.url === '/fraudx/api/v1/claims') {
       res.writeHead(200);
       res.end(JSON.stringify({ response: { bucket: { bucketId: 99999, name: parsedBody.bucketName } } }));

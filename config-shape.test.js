@@ -41,15 +41,15 @@ test('tests.vars.yaml declares one test case per golden claim bucket fixture', (
 });
 
 test('every test case\'s vars.bucket has a sourceBucketId and a newClaim config', () => {
+  // bucketName/ingestionModelId/processingModelId are intentionally absent from
+  // testdata/claims.json as committed — scripts/apply-claim-config.js resolves and
+  // writes them from required env vars immediately before `generate:tests` runs as
+  // part of `npm run eval`'s preeval hook, not before plain `npm test`. Only assert
+  // on what's actually static in the fixture.
   for (const testCase of testCases) {
     const bucket = testCase.vars.bucket;
     assert.equal(typeof bucket.sourceBucketId, 'number');
-
-    assert.equal(typeof bucket.newClaim.bucketName, 'string');
-    assert.ok(bucket.newClaim.bucketName.length > 0);
     assert.equal(typeof bucket.newClaim.claimCategoryId, 'number');
-    assert.equal(typeof bucket.newClaim.ingestionModelId, 'number');
-    assert.equal(typeof bucket.newClaim.processingModelId, 'number');
   }
 });
 

@@ -1,10 +1,7 @@
 [
   {
     "bucketId": 31662,
-    "newClaimName": "promptfoo-golden-claim-eval",
     "claimCategoryId": 23,
-    "ingestionModelId": 1,
-    "processingModelId": 9,
     "expectedFraudRiskScore": 0.6826285714,
     "expectedClaimantName": "Jose Briones",
     "expectedDefendant": "One Team Restoration, Inc.",

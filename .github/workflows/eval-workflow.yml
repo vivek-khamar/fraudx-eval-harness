@@ -12,17 +12,17 @@ on:
           - full-eval
         default: full-eval
       newClaimName:
-        description: 'Ad-hoc override: newClaimName for the golden claim (blank = use testdata/claims.json as committed)'
+        description: 'Name for the created claim (required for full-eval — testdata/claims.json has no default)'
         required: false
         type: string
         default: ''
       ingestionModelName:
-        description: 'Ad-hoc override: exact displayName of the ingestion model to use (blank = no override)'
+        description: 'Exact displayName of the ingestion model to use (required for full-eval)'
         required: false
         type: string
         default: ''
       processingModelName:
-        description: 'Ad-hoc override: exact displayName of the processing model to use (blank = no override)'
+        description: 'Exact displayName of the processing model to use (required for full-eval)'
         required: false
         type: string
         default: ''
@@ -54,6 +54,9 @@ jobs:
       GRADER_PROVIDER: ${{ secrets.GRADER_PROVIDER }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CLAIM_NAME: ${{ inputs.newClaimName }}
+      INGESTION_MODEL_NAME: ${{ inputs.ingestionModelName }}
+      PROCESSING_MODEL_NAME: ${{ inputs.processingModelName }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,13 +64,6 @@ jobs:
           node-version: '22.x'
           cache: 'npm'
       - run: npm ci
-      - name: Apply ad-hoc claim overrides
-        if: ${{ inputs.newClaimName != '' || inputs.ingestionModelName != '' || inputs.processingModelName != '' }}
-        env:
-          ADHOC_NEW_CLAIM_NAME: ${{ inputs.newClaimName }}
-          ADHOC_INGESTION_MODEL_NAME: ${{ inputs.ingestionModelName }}
-          ADHOC_PROCESSING_MODEL_NAME: ${{ inputs.processingModelName }}
-        run: node scripts/apply-adhoc-claim-overrides.js
       - run: npm run eval
       - name: Upload PDF reports
         if: always()
