@@ -1,6 +1,7 @@
 'use strict';
 
 const promptfoo = require('promptfoo');
+const { extractCitedFileNamesFromText } = require('./extract-cited-file-names');
 
 function computeRiskStatusMatch(output, expectedQa) {
   const actualQuestions = output.report.questions;
@@ -54,11 +55,35 @@ async function qaMatchAssertion(output, context) {
     }
     const { matches, reason } = parseGraderVerdict(response.output);
     const riskStatus = actual && actual.riskStatus;
-    perQuestionBreakdown.push({ predefinedQuestionId: q.predefinedQuestionId, question: q.question, actualAnswer, riskStatus, matches, reason });
+
+    const actualCitedFileNames = extractCitedFileNamesFromText(actualAnswer);
+    const expectedCitedFileNames = q.expectedCitedFileNames;
+    const citationMatches = Array.isArray(expectedCitedFileNames) && expectedCitedFileNames.length > 0
+      ? actualCitedFileNames.some((f) => expectedCitedFileNames.includes(f))
+      : undefined;
+
+    perQuestionBreakdown.push({
+      predefinedQuestionId: q.predefinedQuestionId,
+      question: q.question,
+      actualAnswer,
+      riskStatus,
+      matches,
+      reason,
+      actualCitedFileNames,
+      expectedCitedFileNames,
+      citationMatches,
+    });
   }
   const answerContentMatch = perQuestionBreakdown.filter((v) => v.matches).length / perQuestionBreakdown.length;
 
-  const score = (riskStatusMatch + answerContentMatch) / 2;
+  const gradedForCitation = perQuestionBreakdown.filter((v) => v.citationMatches !== undefined);
+  const citationMatch = gradedForCitation.length > 0
+    ? gradedForCitation.filter((v) => v.citationMatches).length / gradedForCitation.length
+    : undefined;
+
+  const score = citationMatch === undefined
+    ? (riskStatusMatch + answerContentMatch) / 2
+    : (riskStatusMatch + answerContentMatch + citationMatch) / 3;
 
   const qaMatchAssert = context.test && Array.isArray(context.test.assert)
     ? context.test.assert.find((a) => a.metric === 'qa_match')
@@ -69,8 +94,8 @@ async function qaMatchAssertion(output, context) {
   return {
     pass,
     score,
-    reason: `riskStatusMatch=${riskStatusMatch}, answerContentMatch=${answerContentMatch}`,
-    namedScores: { riskStatusMatch, answerContentMatch },
+    reason: `riskStatusMatch=${riskStatusMatch}, answerContentMatch=${answerContentMatch}, citationMatch=${citationMatch === undefined ? 'n/a' : citationMatch}`,
+    namedScores: { riskStatusMatch, answerContentMatch, citationMatch },
     perQuestionBreakdown,
   };
 }

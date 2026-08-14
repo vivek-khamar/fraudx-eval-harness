@@ -126,6 +126,9 @@ test('qaMatchAssertion returns one perQuestionBreakdown entry per question', asy
     riskStatus: 'RISK_DETECTED',
     matches: true,
     reason: 'looks right',
+    actualCitedFileNames: [],
+    expectedCitedFileNames: undefined,
+    citationMatches: undefined,
   });
 });
 
@@ -170,4 +173,74 @@ test('qaMatchAssertion propagates a parse error when the grader response has no 
   mockLoadApiProvider(t, async () => ({ output: 'not json at all' }));
 
   await assert.rejects(() => qaMatchAssertion(fakeOutput(), fakeContext()), /Could not find a JSON object/);
+});
+
+function fakeContextWithCitations() {
+  return {
+    vars: {
+      expected: {
+        qa: [
+          { predefinedQuestionId: 1, question: 'Q1?', expectedAnswerSummary: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedCitedFileNames: ['a.pdf', 'b.pdf'] },
+          { predefinedQuestionId: 2, question: 'Q2?', expectedAnswerSummary: 'A2', expectedRiskStatus: 'UNSURE', expectedCitedFileNames: ['c.pdf'] },
+          { predefinedQuestionId: 3, question: 'Q3?', expectedAnswerSummary: 'A3', expectedRiskStatus: 'RISK_DETECTED' }, // no expectedCitedFileNames — not graded for citations
+        ],
+      },
+    },
+    test: { assert: [{ metric: 'qa_match' }], options: { provider: 'anthropic:messages:claude-sonnet-4-5' } },
+  };
+}
+
+function fakeOutputWithCitations() {
+  return {
+    report: {
+      questions: [
+        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="b.pdf"></InTextCitation>' }, // cites b.pdf — one of the two expected — matches
+        { predefinedQuestionId: 2, riskStatus: 'UNSURE', answer: 'see <InTextCitation fileName="wrong.pdf"></InTextCitation>' }, // expected c.pdf, cited wrong.pdf — no match
+        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="anything.pdf"></InTextCitation>' }, // no expectedCitedFileNames — excluded
+      ],
+    },
+  };
+}
+
+test('qaMatchAssertion computes citationMatch as the fraction of graded questions citing at least one expected fileName', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithCitations());
+
+  // question 1: matched; question 2: not matched; question 3: excluded (ungraded) -> 1/2 graded.
+  assert.equal(result.namedScores.citationMatch, 0.5);
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
+  assert.equal(result.perQuestionBreakdown[1].citationMatches, false);
+  assert.equal(result.perQuestionBreakdown[2].citationMatches, undefined);
+  assert.deepEqual(result.perQuestionBreakdown[0].actualCitedFileNames, ['b.pdf']);
+});
+
+test('qaMatchAssertion treats citing any one of several expectedCitedFileNames as a match, not requiring all of them', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  // question 1's expectedCitedFileNames is ['a.pdf', 'b.pdf'] but the actual answer only cites
+  // b.pdf — this must still count as a match ("at least one", not "all of them").
+  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithCitations());
+
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
+});
+
+test('qaMatchAssertion sets namedScores.citationMatch to undefined when no question has expectedCitedFileNames', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  const result = await qaMatchAssertion(fakeOutput(), fakeContext());
+
+  assert.equal(result.namedScores.citationMatch, undefined);
+  assert.ok(result.perQuestionBreakdown.every((v) => v.citationMatches === undefined));
+  // falls back to the 2-signal average exactly as before this feature existed
+  assert.equal(result.score, (result.namedScores.riskStatusMatch + result.namedScores.answerContentMatch) / 2);
+});
+
+test('qaMatchAssertion folds citationMatch into its own score as a 3-way average when at least one question is graded for it', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithCitations());
+
+  const { riskStatusMatch, answerContentMatch, citationMatch } = result.namedScores;
+  assert.equal(result.score, (riskStatusMatch + answerContentMatch + citationMatch) / 3);
 });
