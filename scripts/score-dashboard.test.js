@@ -29,6 +29,32 @@ test('computeAccuracy rounds a fractional weighted sum to the nearest integer', 
   assert.equal(computeAccuracy(namedScores), 71);
 });
 
+test('computeAccuracy folds citationMatch in as an equal sixth when it is present', () => {
+  const namedScores = {
+    riskStatusMatch: 0.9,
+    answerContentMatch: 0.7,
+    report_quality: 0.85,
+    fraudRiskScoreMatch: 1,
+    entityFieldsMatch: 1,
+    citationMatch: 0.5,
+  };
+  // sum = 0.9+0.7+0.85+1+1+0.5 = 4.95; (100/6) * 4.95 = 82.5 -> rounds to 83
+  assert.equal(computeAccuracy(namedScores), 83);
+});
+
+test('computeAccuracy falls back to the five-signal equal-fifths formula when citationMatch is undefined', () => {
+  const namedScores = {
+    riskStatusMatch: 0.9,
+    answerContentMatch: 0.7,
+    report_quality: 0.85,
+    fraudRiskScoreMatch: 1,
+    entityFieldsMatch: 1,
+    citationMatch: undefined,
+  };
+  // Same inputs as the very first computeAccuracy test in this file, minus citationMatch.
+  assert.equal(computeAccuracy(namedScores), 89);
+});
+
 test('scoreDashboard reads results.json and computes all three dashboard numbers for the one claim it contains', () => {
   const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
   const dashboards = scoreDashboard(fixture);

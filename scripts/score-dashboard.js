@@ -6,13 +6,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function computeAccuracy(namedScores) {
-  return Math.round(
-    20 * namedScores.riskStatusMatch +
-    20 * namedScores.answerContentMatch +
-    20 * namedScores.report_quality +
-    20 * namedScores.fraudRiskScoreMatch +
-    20 * namedScores.entityFieldsMatch
-  );
+  const scores = [
+    namedScores.riskStatusMatch,
+    namedScores.answerContentMatch,
+    namedScores.report_quality,
+    namedScores.fraudRiskScoreMatch,
+    namedScores.entityFieldsMatch,
+  ];
+  // citationMatch is optional — a claim with no question graded for citations has no such
+  // signal to fold in, so it must not be forced into the weighting (see Global Constraints).
+  if (typeof namedScores.citationMatch === 'number') {
+    scores.push(namedScores.citationMatch);
+  }
+  const weight = 100 / scores.length;
+  return Math.round(scores.reduce((sum, s) => sum + weight * s, 0));
 }
 
 function scoreDashboard(resultsFilePath) {
