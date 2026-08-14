@@ -5,6 +5,16 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 
+function computeAccuracy(namedScores) {
+  return Math.round(
+    20 * namedScores.riskStatusMatch +
+    20 * namedScores.answerContentMatch +
+    20 * namedScores.report_quality +
+    20 * namedScores.fraudRiskScoreMatch +
+    20 * namedScores.entityFieldsMatch
+  );
+}
+
 function scoreDashboard(resultsFilePath) {
   const raw = fs.readFileSync(resultsFilePath, 'utf8');
   const parsed = JSON.parse(raw);
@@ -25,13 +35,7 @@ function scoreDashboard(resultsFilePath) {
     const ingestionTime = output.ingestion.timeMs / 1000;
     const processingTime = output.processing.timeMs / 1000;
 
-    const accuracy = Math.round(
-      20 * namedScores.riskStatusMatch +
-      20 * namedScores.answerContentMatch +
-      20 * namedScores.report_quality +
-      20 * namedScores.fraudRiskScoreMatch +
-      20 * namedScores.entityFieldsMatch
-    );
+    const accuracy = computeAccuracy(namedScores);
     if (Number.isNaN(accuracy)) {
       return { bucketId, error: 'Computed accuracy score is NaN — a named score is missing from the results file' };
     }
@@ -50,4 +54,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { scoreDashboard };
+module.exports = { scoreDashboard, computeAccuracy };

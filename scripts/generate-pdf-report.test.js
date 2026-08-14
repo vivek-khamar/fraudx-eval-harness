@@ -150,6 +150,61 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /One Team Restoration, Inc\./);
 });
 
+test('generatePdfReports keeps a question\'s content together in reading order, without truncation, even when its reason text forces a page break', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const qaMatchComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'qa_match'
+  );
+  // A realistically long reason (2,500+ chars) — long enough that, at this repo's
+  // table-column widths, it would have forced pdfkit to auto-paginate mid-column
+  // under the old 4-column drawTableRow layout, tearing this row's Answer/Match/
+  // Reason across pages. Under the new per-question block layout it should just
+  // flow across the page break within this one question's paragraph.
+  const longReasonBegin = 'REASON-BEGIN-MARKER';
+  const longReasonEnd = 'REASON-END-MARKER';
+  const longReason = `${longReasonBegin} ${'The grader compared the actual answer against the expected summary in detail. '.repeat(35)} ${longReasonEnd}`;
+  qaMatchComponent.perQuestionBreakdown = [
+    { predefinedQuestionId: 1, question: 'FIRST-QUESTION-MARKER: Is there fraud?', actualAnswer: 'Yes, per doc X.', matches: true, reason: 'Short first reason.' },
+    { predefinedQuestionId: 2, question: 'SECOND-QUESTION-MARKER: What is the claim status?', actualAnswer: 'Open, pending review.', matches: false, reason: longReason },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  let pageCount;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+    pageCount = result.total ?? result.pages?.length;
+  } finally {
+    await parser.destroy();
+  }
+
+  // Sanity check that this fixture actually exercises a page break — otherwise the
+  // ordering/truncation assertions below wouldn't be testing anything meaningful.
+  assert.ok(pageCount === undefined || pageCount > 1, `expected the long reason to force a multi-page PDF, got ${pageCount} page(s)`);
+
+  assert.match(text, /FIRST-QUESTION-MARKER/);
+  assert.match(text, /SECOND-QUESTION-MARKER/);
+  assert.ok(
+    text.indexOf('FIRST-QUESTION-MARKER') < text.indexOf('SECOND-QUESTION-MARKER'),
+    'expected the first question to appear before the second question in reading order'
+  );
+  assert.match(text, new RegExp(longReasonBegin));
+  assert.match(text, new RegExp(longReasonEnd));
+  assert.ok(
+    text.indexOf(longReasonBegin) < text.indexOf(longReasonEnd),
+    'expected the beginning of the long reason to appear before its end'
+  );
+});
+
 test('generatePdfReports renders the fallback text (not the literal string "undefined") when the report_quality component has no reason field', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -176,4 +231,35 @@ test('generatePdfReports renders the fallback text (not the literal string "unde
 
   assert.match(text, /\(no report_quality reasoning available\)/);
   assert.doesNotMatch(text, /undefined/);
+});
+
+test('generatePdfReports logs a console.error mentioning the bucketId of a claim it skips', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const malformedClaim = sampleResultsFile().results.results[0];
+  malformedClaim.response.output.report.bucketId = 88888;
+  delete malformedClaim.gradingResult.namedScores;
+  fixture.results.results.unshift(malformedClaim);
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const originalConsoleError = console.error;
+  const errorCalls = [];
+  console.error = (...args) => {
+    errorCalls.push(args.join(' '));
+  };
+  t.after(() => {
+    console.error = originalConsoleError;
+  });
+
+  const written = await generatePdfReports(resultsPath, reportsDir);
+
+  assert.equal(written.length, 1);
+  assert.ok(
+    errorCalls.some((message) => message.includes('88888')),
+    `expected a console.error call mentioning bucketId 88888, got: ${JSON.stringify(errorCalls)}`
+  );
 });

@@ -3,7 +3,31 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { scoreDashboard } = require('./score-dashboard');
+const { scoreDashboard, computeAccuracy } = require('./score-dashboard');
+
+test('computeAccuracy averages all five named scores as equal fifths', () => {
+  const namedScores = {
+    riskStatusMatch: 0.9,
+    answerContentMatch: 0.7,
+    report_quality: 0.85,
+    fraudRiskScoreMatch: 1,
+    entityFieldsMatch: 1,
+  };
+  // round(20*0.9 + 20*0.7 + 20*0.85 + 20*1 + 20*1) = round(89) = 89
+  assert.equal(computeAccuracy(namedScores), 89);
+});
+
+test('computeAccuracy rounds a fractional weighted sum to the nearest integer', () => {
+  const namedScores = {
+    riskStatusMatch: 0.629,
+    answerContentMatch: 0.571,
+    report_quality: 0.7,
+    fraudRiskScoreMatch: 1,
+    entityFieldsMatch: 2 / 3,
+  };
+  // round(20*0.629 + 20*0.571 + 20*0.7 + 20*1 + 20*(2/3)) = round(71.333...) = 71
+  assert.equal(computeAccuracy(namedScores), 71);
+});
 
 test('scoreDashboard reads results.json and computes all three dashboard numbers for the one claim it contains', () => {
   const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');

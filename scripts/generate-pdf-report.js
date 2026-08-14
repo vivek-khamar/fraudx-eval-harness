@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const PDFDocument = require('pdfkit');
 const { entitiesMatch, fraudRiskScoreMatches } = require('./metadata-match-assertion');
+const { computeAccuracy } = require('./score-dashboard');
 
 const MARGIN = 50;
 const COLUMN_GAP = 10;
@@ -79,13 +80,7 @@ function renderClaimPdf(result, timestamp, filePath) {
   const bucketId = report.bucketId;
   const ingestionTime = output.ingestion.timeMs / 1000;
   const processingTime = output.processing.timeMs / 1000;
-  const accuracy = Math.round(
-    20 * namedScores.riskStatusMatch +
-    20 * namedScores.answerContentMatch +
-    20 * namedScores.report_quality +
-    20 * namedScores.fraudRiskScoreMatch +
-    20 * namedScores.entityFieldsMatch
-  );
+  const accuracy = computeAccuracy(namedScores);
 
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const doc = new PDFDocument({ margin: MARGIN });
@@ -103,13 +98,20 @@ function renderClaimPdf(result, timestamp, filePath) {
 
   doc.fontSize(14).text('Question-by-question results');
   doc.moveDown(0.5);
-  doc.fontSize(10);
-  const qWidths = [170, 170, 40, 100];
-  drawTableRow(doc, ['Question', 'Answer', 'Match', 'Reason'], qWidths);
+  const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   for (const entry of perQuestionBreakdown) {
-    drawTableRow(doc, [entry.question, entry.actualAnswer, entry.matches ? 'YES' : 'NO', entry.reason], qWidths);
+    // Full-width flowing paragraphs (no manual x/y column positioning) let pdfkit's
+    // automatic pagination handle overflow within each paragraph, so a single
+    // question's content stays together in reading order even if it spans a page
+    // break — unlike the fixed-column drawTableRow layout below, which tears a
+    // wrapped cell's remaining columns onto whatever page the cursor lands on.
+    doc.fontSize(10).font('Helvetica-Bold').text(`Q${entry.predefinedQuestionId}: ${entry.question}`, { width: usableWidth });
+    doc.font('Helvetica');
+    doc.text(`Match: ${entry.matches ? 'YES' : 'NO'}`, { width: usableWidth });
+    doc.text(`Answer: ${entry.actualAnswer}`, { width: usableWidth });
+    doc.text(`Reason: ${entry.reason}`, { width: usableWidth });
+    doc.moveDown();
   }
-  doc.moveDown();
 
   doc.fontSize(14).text('Claim metadata match');
   doc.moveDown(0.5);
@@ -154,9 +156,11 @@ async function generatePdfReports(resultsFilePath, reportsDir) {
   for (const result of results) {
     const bucketId = result.response?.output?.report?.bucketId;
     if (bucketId === undefined) {
+      console.error('Skipping claim unknown: no report was ever produced.');
       continue;
     }
     if (!isClaimRenderable(result)) {
+      console.error(`Skipping claim ${bucketId}: missing required data for PDF generation.`);
       continue;
     }
     const fileName = `report-${formatTimestampForFilename(timestamp)}.pdf`;
@@ -175,6 +179,7 @@ function main() {
       for (const filePath of written) {
         console.log(`Wrote ${filePath}`);
       }
+      console.log(`Wrote ${written.length} report(s).`);
     })
     .catch((err) => {
       console.error(err);

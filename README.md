@@ -20,16 +20,19 @@ document-ingestion + report pipeline and scores each against a human-verified an
   just fields on the provider's output, already timed by the time promptfoo sees
   them. `scripts/score-dashboard.js` reports them as-is — no budget or percentage
   math, just the raw millisecond values.
-- **Accuracy is graded inside promptfoo**, via one assertion (`qa_match`) producing two named
-  sub-scores, plus a separate `report_quality` assertion, applied to every test case (one per
-  golden claim):
+- **Accuracy is graded inside promptfoo**, via three assertions applied to every test case (one
+  per golden claim): `qa_match`, `report_quality`, and `metadata_match`.
   - `qa_match` (`javascript`, `scripts/qa-match-assertion.js`) computes two independent signals
     and reports both as named scores from a single assertion:
     - `riskStatusMatch` (deterministic): the fraction of that claim's predefined questions whose
       `riskStatus` exactly matches the gold `expectedRiskStatus`.
-    - `answerContentMatch` (LLM-graded): one rubric call per claim — not per question — that
-      judges every question's actual answer text against its gold `expectedAnswerSummary` for
-      semantic (not exact-wording) match, and returns the fraction that match.
+    - `answerContentMatch` (LLM-graded): one rubric call PER QUESTION (not one batched call for
+      all of a claim's questions) that judges that question's actual answer text against its gold
+      `expectedAnswerSummary` for semantic (not exact-wording) match, and returns the fraction of
+      questions that match. The assertion also returns a `perQuestionBreakdown` array — one entry
+      per question with its `predefinedQuestionId`, `question`, `actualAnswer`, `matches`
+      (boolean), and `reason` (the grader's per-question reasoning) — which is what
+      `scripts/generate-pdf-report.js` renders in the question-by-question section of the PDF.
     The assertion's own score is the average of the two; `pass` defaults to `score > 0` unless
     a `threshold` is set on the `qa_match` assert entry in `promptfooconfig.yaml`.
   - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary and
@@ -37,10 +40,20 @@ document-ingestion + report pipeline and scores each against a human-verified an
     completeness, clinical correctness, missing information, and groundedness (whether every claim
     in the summary is actually supported by the cited source text, with no hallucination) — a
     single 0–1 score covering all of that.
-  `scripts/score-dashboard.js` combines all three as equal thirds:
-  `acc = round((100/3)×riskStatusMatch + (100/3)×answerContentMatch + (100/3)×report_quality)`.
-  `acc` numbers from before this scoring change are not directly comparable to `acc` numbers
-  after it — the weighting and underlying signals both changed.
+  - `metadata_match` (`javascript`, `scripts/metadata-match-assertion.js`) checks the real report's
+    claim-level metadata against new `expected*` fields in `testdata/claims.json`, and reports two
+    named scores:
+    - `fraudRiskScoreMatch`: 1 if the real report's `fraudRiskScore` is within ±0.1 of the gold
+      `expectedFraudRiskScore`, else 0.
+    - `entityFieldsMatch`: the fraction of `claimantName`, `defendant`, and `insuranceFirm` that
+      match their `expected*` counterpart exactly, case- and whitespace-insensitively.
+  `scripts/score-dashboard.js` (via its exported `computeAccuracy(namedScores)`, also reused by
+  `scripts/generate-pdf-report.js` so the two never drift apart) combines all five named scores as
+  equal fifths:
+  `acc = round(20×riskStatusMatch + 20×answerContentMatch + 20×report_quality + 20×fraudRiskScoreMatch + 20×entityFieldsMatch)`.
+  `acc` numbers from before this scoring change (three signals, equal thirds) are not directly
+  comparable to `acc` numbers after it (five signals, equal fifths) — the weighting and underlying
+  signals both changed.
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
 - **`provider.js` fetches the text of every document the real report actually cites** (not the
@@ -52,8 +65,17 @@ document-ingestion + report pipeline and scores each against a human-verified an
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
 - **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
 - **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="...">` tags inside each answer's text, not a structured field — `provider.js`'s `extractCitedFileNames` regex-extracts them (to decide which documents to fetch text for), and `report_quality` checks claims against that fetched text rather than matching on filename alone.
-- **Entity extraction accuracy is not implemented yet** — the dashboard has no field for it
-  until that scoring is built.
+- **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
+  `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
+  writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
+  `reports/<bucketId>/report-<timestamp>.pdf`. Each PDF shows the question-by-question breakdown
+  (one block per question — heading, match, answer, and grader reasoning, laid out as full-width
+  flowing paragraphs so a single question's content stays together in reading order even across a
+  page break), the claim-metadata match table (`fraudRiskScore` and the three entity fields,
+  expected vs. actual), and an overall summary. A claim that gets skipped (no `bucketId`, or
+  missing the data the PDF needs) is logged via `console.error` with its `bucketId` and a reason,
+  and `main()` prints a final `Wrote N report(s).` summary line, so a run that produces zero PDFs
+  is never silent.
 
 ## Setup
 
@@ -112,6 +134,11 @@ promptfoo sets that top-level error to a human-readable summary whenever any ass
 which doesn't mean the pipeline or scoring actually failed.
 
 `ingestionTime` and `processingTime` are raw seconds (ingestion phase alone, and report-generation phase alone, respectively) — not scores or percentages.
+
+`npm run score` also runs `scripts/generate-pdf-report.js` against the same `results.json`,
+writing `reports/<bucketId>/report-<timestamp>.pdf` for each claim it can render (see the PDF
+report bullet above) — so a normal `npm run eval` run leaves you with both the console dashboard
+and one PDF report per claim.
 
 ## Running the unit tests
 
