@@ -231,6 +231,7 @@ test('qaMatchAssertion sets namedScores.citationMatch to undefined when no quest
   const result = await qaMatchAssertion(fakeOutput(), fakeContext());
 
   assert.equal(result.namedScores.citationMatch, undefined);
+  assert.equal('citationMatch' in result.namedScores, false);
   assert.ok(result.perQuestionBreakdown.every((v) => v.citationMatches === undefined));
   // falls back to the 2-signal average exactly as before this feature existed
   assert.equal(result.score, (result.namedScores.riskStatusMatch + result.namedScores.answerContentMatch) / 2);
@@ -243,4 +244,48 @@ test('qaMatchAssertion folds citationMatch into its own score as a 3-way average
 
   const { riskStatusMatch, answerContentMatch, citationMatch } = result.namedScores;
   assert.equal(result.score, (riskStatusMatch + answerContentMatch + citationMatch) / 3);
+});
+
+test('qaMatchAssertion treats a question with expectedCitedFileNames as an empty array as NOT graded for citations', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  const context = fakeContext();
+  context.vars.expected.qa[0].expectedCitedFileNames = [];
+
+  const result = await qaMatchAssertion(fakeOutput(), context);
+
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, undefined);
+  assert.equal('citationMatch' in result.namedScores, false);
+});
+
+test('qaMatchAssertion correctly reads expectedCitedFileNames when vars are built by the real generate-tests-vars.js pipeline, not hand-authored', async (t) => {
+  const { buildTestsVars } = require('./generate-tests-vars');
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  const rawClaim = {
+    bucketId: 1,
+    claimCategoryId: 1,
+    expectedFraudRiskScore: 0.5,
+    expectedClaimantName: 'X',
+    expectedDefendant: 'Y',
+    expectedInsuranceFirm: 'Z',
+    summary: 'S',
+    questions: [
+      { id: 1, question: 'Q1?', expectedAnswer: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedCitedFileNames: ['a.pdf'] },
+    ],
+  };
+  const [{ vars }] = buildTestsVars([rawClaim]);
+  const context = { vars, test: { assert: [{ metric: 'qa_match' }], options: {} } };
+  const output = {
+    report: {
+      questions: [
+        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf"></InTextCitation>' },
+      ],
+    },
+  };
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(result.namedScores.citationMatch, 1);
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
 });

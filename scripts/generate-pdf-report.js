@@ -36,7 +36,7 @@ function formatRiskStatus(riskStatus) {
 }
 
 function formatCitationMatch(entry) {
-  if (entry.citationMatches === undefined) {
+  if (entry.citationMatches == null) {
     return 'Not graded';
   }
   if (entry.citationMatches) {

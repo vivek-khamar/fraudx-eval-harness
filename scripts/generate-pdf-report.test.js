@@ -194,6 +194,7 @@ test('formatCitationMatch shows (none) when a non-matching question actually cit
 
 test('formatCitationMatch renders Not graded when citationMatches is undefined', () => {
   assert.equal(formatCitationMatch({ citationMatches: undefined }), 'Not graded');
+  assert.equal(formatCitationMatch({ citationMatches: null }), 'Not graded');
 });
 
 test('uniqueFilePath returns the given path unchanged when nothing exists there yet', (t) => {

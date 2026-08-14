@@ -95,7 +95,9 @@ async function qaMatchAssertion(output, context) {
     pass,
     score,
     reason: `riskStatusMatch=${riskStatusMatch}, answerContentMatch=${answerContentMatch}, citationMatch=${citationMatch === undefined ? 'n/a' : citationMatch}`,
-    namedScores: { riskStatusMatch, answerContentMatch, citationMatch },
+    namedScores: citationMatch === undefined
+      ? { riskStatusMatch, answerContentMatch }
+      : { riskStatusMatch, answerContentMatch, citationMatch },
     perQuestionBreakdown,
   };
 }

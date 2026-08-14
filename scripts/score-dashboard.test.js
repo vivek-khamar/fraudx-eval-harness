@@ -55,6 +55,18 @@ test('computeAccuracy falls back to the five-signal equal-fifths formula when ci
   assert.equal(computeAccuracy(namedScores), 89);
 });
 
+test('computeAccuracy falls back to the five-signal formula when citationMatch is null', () => {
+  const namedScores = {
+    riskStatusMatch: 0.9,
+    answerContentMatch: 0.7,
+    report_quality: 0.85,
+    fraudRiskScoreMatch: 1,
+    entityFieldsMatch: 1,
+    citationMatch: null,
+  };
+  assert.equal(computeAccuracy(namedScores), 89);
+});
+
 test('scoreDashboard reads results.json and computes all three dashboard numbers for the one claim it contains', () => {
   const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
   const dashboards = scoreDashboard(fixture);
