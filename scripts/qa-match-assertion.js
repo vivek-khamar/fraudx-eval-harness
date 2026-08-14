@@ -53,7 +53,8 @@ async function qaMatchAssertion(output, context) {
       throw new Error(response.error);
     }
     const { matches, reason } = parseGraderVerdict(response.output);
-    perQuestionBreakdown.push({ predefinedQuestionId: q.predefinedQuestionId, question: q.question, actualAnswer, matches, reason });
+    const riskStatus = actual && actual.riskStatus;
+    perQuestionBreakdown.push({ predefinedQuestionId: q.predefinedQuestionId, question: q.question, actualAnswer, riskStatus, matches, reason });
   }
   const answerContentMatch = perQuestionBreakdown.filter((v) => v.matches).length / perQuestionBreakdown.length;
 

@@ -123,6 +123,7 @@ test('qaMatchAssertion returns one perQuestionBreakdown entry per question', asy
     predefinedQuestionId: 1,
     question: 'Q1?',
     actualAnswer: 'ans1',
+    riskStatus: 'RISK_DETECTED',
     matches: true,
     reason: 'looks right',
   });

@@ -13,6 +13,18 @@ function formatTimestampForFilename(isoTimestamp) {
   return isoTimestamp.replace(/:/g, '-').replace(/\.\d+Z$/, '');
 }
 
+function formatRiskStatus(riskStatus) {
+  return riskStatus ? riskStatus.replace(/_/g, ' ') : 'N/A';
+}
+
+// The real report embeds a human-readable risk-status label at the start of
+// each answer's text (e.g. "RISK DETECTED: ...", "RISK UNKNOWN: ..."). Now
+// that riskStatus is its own field, strip the redundant prefix from the
+// answer so it isn't shown twice.
+function stripRiskStatusPrefix(answer) {
+  return (answer || '').replace(/^RISK [A-Z ]+:\s*/, '');
+}
+
 function drawTableRow(doc, columns, colWidths) {
   const heights = columns.map((text, i) => doc.heightOfString(String(text), { width: colWidths[i] }));
   const rowHeight = Math.max(...heights) + 8;
@@ -87,9 +99,12 @@ function renderClaimPdf(result, timestamp, filePath) {
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  doc.fontSize(18).text(`Claim Report — bucket ${bucketId}`);
+  const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+  doc.fontSize(18).text('Claim Report', { align: 'center' });
   doc.moveDown();
   doc.fontSize(11);
+  doc.text(`Bucket ID: ${bucketId}`);
   doc.text(`Ingestion time: ${ingestionTime}s`);
   doc.text(`Processing time: ${processingTime}s`);
   doc.text(`Accuracy: ${accuracy}`);
@@ -97,21 +112,42 @@ function renderClaimPdf(result, timestamp, filePath) {
   doc.moveDown();
 
   doc.fontSize(14).text('Question-by-question results');
-  doc.moveDown(0.5);
-  const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  for (const entry of perQuestionBreakdown) {
+  doc.moveDown(0.75);
+
+  // Renders one "Label: value" line with a bold label and a regular-weight
+  // value, wrapping within usableWidth like a normal paragraph.
+  function field(label, value) {
+    doc.font('Helvetica-Bold').fontSize(10).text(label, { continued: true, width: usableWidth });
+    doc.font('Helvetica').text(value, { width: usableWidth });
+    doc.moveDown(0.35);
+  }
+
+  perQuestionBreakdown.forEach((entry, index) => {
     // Full-width flowing paragraphs (no manual x/y column positioning) let pdfkit's
     // automatic pagination handle overflow within each paragraph, so a single
     // question's content stays together in reading order even if it spans a page
     // break — unlike the fixed-column drawTableRow layout below, which tears a
     // wrapped cell's remaining columns onto whatever page the cursor lands on.
-    doc.fontSize(10).font('Helvetica-Bold').text(`Q${entry.predefinedQuestionId}: ${entry.question}`, { width: usableWidth });
-    doc.font('Helvetica');
-    doc.text(`Match: ${entry.matches ? 'YES' : 'NO'}`, { width: usableWidth });
-    doc.text(`Answer: ${entry.actualAnswer}`, { width: usableWidth });
-    doc.text(`Reason: ${entry.reason}`, { width: usableWidth });
-    doc.moveDown();
-  }
+    doc.fontSize(11).font('Helvetica-Bold').text(`Q${entry.predefinedQuestionId}: ${entry.question}`, { width: usableWidth });
+    doc.moveDown(0.5);
+    field('Risk Status: ', formatRiskStatus(entry.riskStatus));
+    field('Match: ', entry.matches ? 'YES' : 'NO');
+    field('Answer: ', stripRiskStatusPrefix(entry.actualAnswer));
+    field('Reason: ', entry.reason);
+
+    if (index < perQuestionBreakdown.length - 1) {
+      doc.moveDown(0.5);
+      doc
+        .strokeColor('#cccccc')
+        .moveTo(doc.page.margins.left, doc.y)
+        .lineTo(doc.page.width - doc.page.margins.right, doc.y)
+        .stroke()
+        .strokeColor('black');
+      doc.moveDown(0.75);
+    } else {
+      doc.moveDown();
+    }
+  });
 
   doc.fontSize(14).text('Claim metadata match');
   doc.moveDown(0.5);
@@ -129,8 +165,8 @@ function renderClaimPdf(result, timestamp, filePath) {
     ['defendant', expected.defendant, report.defendant],
     ['insuranceFirm', expected.insuranceFirm, report.insuranceFirm],
   ];
-  for (const [field, exp, actual] of entityRows) {
-    drawTableRow(doc, [field, exp, actual, entitiesMatch(actual, exp) ? 'YES' : 'NO'], mWidths);
+  for (const [fieldName, exp, actual] of entityRows) {
+    drawTableRow(doc, [fieldName, exp, actual, entitiesMatch(actual, exp) ? 'YES' : 'NO'], mWidths);
   }
   doc.moveDown();
 
@@ -191,4 +227,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { generatePdfReports, formatTimestampForFilename };
+module.exports = { generatePdfReports, formatTimestampForFilename, formatRiskStatus, stripRiskStatusPrefix };

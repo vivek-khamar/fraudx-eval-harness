@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { PDFParse } = require('pdf-parse');
-const { generatePdfReports, formatTimestampForFilename } = require('./generate-pdf-report');
+const { generatePdfReports, formatTimestampForFilename, formatRiskStatus, stripRiskStatusPrefix } = require('./generate-pdf-report');
 
 function sampleResultsFile() {
   return {
@@ -47,7 +47,7 @@ function sampleResultsFile() {
               {
                 assertion: { metric: 'qa_match' },
                 perQuestionBreakdown: [
-                  { predefinedQuestionId: 1, question: 'Is there fraud?', actualAnswer: 'Yes, per doc X.', matches: true, reason: 'Matches expected reasoning' },
+                  { predefinedQuestionId: 1, question: 'Is there fraud?', actualAnswer: 'RISK DETECTED: Yes, per doc X.', riskStatus: 'RISK_DETECTED', matches: true, reason: 'Matches expected reasoning' },
                 ],
               },
               {
@@ -64,6 +64,36 @@ function sampleResultsFile() {
 
 test('formatTimestampForFilename converts an ISO timestamp into a filesystem-safe string', () => {
   assert.equal(formatTimestampForFilename('2026-08-13T05:52:47.729Z'), '2026-08-13T05-52-47');
+});
+
+test('formatRiskStatus replaces underscores with spaces', () => {
+  assert.equal(formatRiskStatus('RISK_DETECTED'), 'RISK DETECTED');
+  assert.equal(formatRiskStatus('UNSURE'), 'UNSURE');
+});
+
+test('formatRiskStatus falls back to N/A when riskStatus is missing', () => {
+  assert.equal(formatRiskStatus(undefined), 'N/A');
+  assert.equal(formatRiskStatus(null), 'N/A');
+  assert.equal(formatRiskStatus(''), 'N/A');
+});
+
+test('stripRiskStatusPrefix removes a leading "RISK ...:" label from an answer', () => {
+  assert.equal(
+    stripRiskStatusPrefix('RISK DETECTED: The plaintiff is flagged.'),
+    'The plaintiff is flagged.'
+  );
+  assert.equal(
+    stripRiskStatusPrefix('RISK NOT DETECTED: No issues found.'),
+    'No issues found.'
+  );
+});
+
+test('stripRiskStatusPrefix leaves an answer with no risk-status prefix unchanged', () => {
+  assert.equal(stripRiskStatusPrefix('The plaintiff is flagged.'), 'The plaintiff is flagged.');
+});
+
+test('stripRiskStatusPrefix handles a missing answer', () => {
+  assert.equal(stripRiskStatusPrefix(undefined), '');
 });
 
 test('generatePdfReports writes one PDF per claim with a bucketId, at reports/<bucketId>/report-<timestamp>.pdf', async (t) => {
@@ -143,8 +173,13 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
     await parser.destroy();
   }
 
-  assert.match(text, /32023/);
+  assert.match(text, /Claim Report/);
+  assert.doesNotMatch(text, /Claim Report.*32023/);
+  assert.match(text, /Bucket ID: 32023/);
   assert.match(text, /Is there fraud\?/);
+  assert.match(text, /Risk Status: RISK DETECTED/);
+  assert.match(text, /Answer: Yes, per doc X\./);
+  assert.doesNotMatch(text, /RISK DETECTED: Yes, per doc X\./, 'the risk-status prefix should be stripped from the rendered answer text');
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);
   assert.match(text, /One Team Restoration, Inc\./);
