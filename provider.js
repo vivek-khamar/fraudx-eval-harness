@@ -81,7 +81,7 @@ class FraudXClaimProvider {
     if (chunkGroundingData) {
       const chunksByFileName = new Map();
       for (const { fileName, documentId, chunkId } of citations) {
-        const chunkText = chunkGroundingData.get(`${documentId}:${chunkId}`);
+        const chunkText = chunkGroundingData.get(s3Client.chunkKey(documentId, chunkId));
         if (!chunkText) {
           continue; // not found in the grounding file — skip, no fallback
         }

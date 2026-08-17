@@ -4,6 +4,14 @@ const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 const BUCKET_NAME = 'fraudx-qa-claim-processor';
 
+// The one definition of the chunk-grounding lookup's key format. Exported because the
+// producer (this file) and both consumers (provider.js, scripts/qa-match-assertion.js)
+// have to agree on it exactly — a drift in any one of them wouldn't crash, it would
+// silently resolve zero citations everywhere.
+function chunkKey(documentId, chunkId) {
+  return `${documentId}:${chunkId}`;
+}
+
 function buildGroundingLookup(parsed, bucketId) {
   const questionnaire = parsed && parsed.questionnaire;
   if (!Array.isArray(questionnaire)) {
@@ -17,7 +25,7 @@ function buildGroundingLookup(parsed, bucketId) {
       if (!doc.document_uuid || !doc.chunk_uuid) {
         continue;
       }
-      lookup.set(`${doc.document_uuid}:${doc.chunk_uuid}`, ref.chunk_text);
+      lookup.set(chunkKey(doc.document_uuid, doc.chunk_uuid), ref.chunk_text);
     }
   }
   return lookup;
@@ -54,4 +62,4 @@ async function fetchChunkGroundingData(bucketId, timeoutMs) {
   return buildGroundingLookup(parsed, bucketId);
 }
 
-module.exports = { fetchChunkGroundingData };
+module.exports = { fetchChunkGroundingData, chunkKey };

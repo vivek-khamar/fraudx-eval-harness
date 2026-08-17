@@ -2,9 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const promptfoo = require('promptfoo');
 const fraudxClient = require('./fraudx-client');
 const s3Client = require('./s3-client');
 const Provider = require('./provider');
+const qaMatchAssertion = require('./scripts/qa-match-assertion');
 
 function mockFraudxClient(t, overrides) {
   const originals = {};
@@ -379,4 +381,69 @@ test('callApi exposes output.chunkGroundingData as null when the grounding file 
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
   assert.equal(result.output.chunkGroundingData, null);
+});
+
+// The one test that crosses the provider.js -> qa-match-assertion.js seam for real. Each module
+// has its own unit tests with hand-built lookups, which would all keep passing if the two drifted
+// apart on the container type (Map vs plain object) or the key format. Here the lookup is keyed
+// via s3-client.js's own chunkKey (the producer's format, not a hand-typed string), handed to
+// provider.callApi, and then consumed by the real qaMatchAssertion.
+test('a lookup keyed by s3-client.js chunkKey resolves end-to-end in qa-match-assertion.js', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    fetchReport: async () => ({
+      reportId: 'report-1',
+      summary: 's',
+      bucketId: 32023,
+      questions: [{
+        predefinedQuestionId: 1,
+        riskStatus: 'RISK_DETECTED',
+        answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+      }],
+    }),
+  });
+  mockS3Client(t, async () => new Map([[s3Client.chunkKey('doc-1', 'chunk-1'), 'The verbatim grounded passage.']]));
+
+  const originalLoadApiProvider = promptfoo.loadApiProvider;
+  promptfoo.loadApiProvider = async () => ({
+    callApi: async (prompt) => ({
+      output: JSON.stringify({
+        matches: true,
+        reason: prompt.includes('Expected source passage:') ? 'chunk resolved and matched' : 'answer ok',
+      }),
+    }),
+  });
+  t.after(() => {
+    promptfoo.loadApiProvider = originalLoadApiProvider;
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  const assertionResult = await qaMatchAssertion(result.output, {
+    vars: {
+      expected: {
+        qa: [{
+          predefinedQuestionId: 1,
+          question: 'Q1?',
+          expectedAnswerSummary: 'A1',
+          expectedRiskStatus: 'RISK_DETECTED',
+          expectedChunkText: 'The verbatim grounded passage.',
+        }],
+      },
+    },
+    test: { assert: [{ metric: 'qa_match' }], options: {} },
+  });
+
+  assert.equal(
+    assertionResult.perQuestionBreakdown[0].citationMatchReason,
+    'chunk resolved and matched',
+    'qa-match-assertion.js must actually resolve the citation against the provider\'s own lookup'
+  );
+  assert.equal(assertionResult.perQuestionBreakdown[0].citationMatches, true);
+  assert.equal(assertionResult.namedScores.citationMatch, 1);
 });

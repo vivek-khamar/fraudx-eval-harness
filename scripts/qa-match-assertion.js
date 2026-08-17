@@ -1,6 +1,7 @@
 'use strict';
 
 const promptfoo = require('promptfoo');
+const s3Client = require('../s3-client');
 const { extractCitedCitationsFromText } = require('./extract-cited-file-names');
 
 function computeRiskStatusMatch(output, expectedQa) {
@@ -62,7 +63,7 @@ async function computeChunkTextMatch(provider, expectedChunkText, actualAnswer, 
   let sawAnyResolved = false;
   let lastFalseReason = NO_CITATION_RESOLVED_REASON;
   for (const { documentId, chunkId } of citations) {
-    const chunkText = chunkGroundingData ? chunkGroundingData.get(`${documentId}:${chunkId}`) : undefined;
+    const chunkText = chunkGroundingData ? chunkGroundingData.get(s3Client.chunkKey(documentId, chunkId)) : undefined;
     if (!chunkText) {
       continue;
     }
