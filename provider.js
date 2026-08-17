@@ -52,13 +52,14 @@ class FraudXClaimProvider {
       pollTimeoutMs: Number(process.env.FRAUDX_UPLOAD_POLL_TIMEOUT_MS || 3600000),
     };
     const ingestionStart = Date.now();
-    for (const doc of sourceDocs) {
+    await Promise.all(sourceDocs.map(async (doc) => {
       const contentType = fraudxClient.contentTypeForExtension(doc.extension);
       const downloadUrl = await fraudxClient.getDownloadUrl(base, doc.gxMasterId, auth, timeoutMs);
       const bytes = await fraudxClient.downloadFile(downloadUrl, timeoutMs);
-      // Requested here, immediately before use, rather than batched for all documents before the loop —
-      // presigned upload URLs go stale within minutes on the real platform, and each document can now
-      // take minutes of real GX processing before the next one's turn comes up.
+      // Requested here, immediately before use, rather than batched for all documents upfront —
+      // presigned upload URLs go stale within minutes on the real platform. Each document still
+      // requests its own URL right before uploading; only the documents now run concurrently
+      // with each other instead of waiting their turn.
       const uploads = await fraudxClient.requestUploadUrls(base, auth, [{ fileName: doc.fileName, contentType }], newBucketId, timeoutMs);
       const upload = uploads.find((u) => u.fileName === doc.fileName);
       if (!upload) {
@@ -67,7 +68,7 @@ class FraudXClaimProvider {
       await fraudxClient.uploadFile(upload.uploadUrl, bytes, contentType, timeoutMs);
       await fraudxClient.triggerJobProcessing(base, auth, [upload.jobId], timeoutMs);
       await fraudxClient.waitForDocumentUpload(base, newBucketId, upload.jobId, auth, timeoutMs, uploadPollConfig);
-    }
+    }));
     const ingestionTimeMs = Date.now() - ingestionStart;
 
     const processingStart = Date.now();

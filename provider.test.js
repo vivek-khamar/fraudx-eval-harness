@@ -159,6 +159,36 @@ test('callApi measures ingestion (the upload loop) and processing (claim trigger
   );
 });
 
+test('callApi ingests all source documents concurrently, not one at a time', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    listBucketDocuments: async () => [
+      { gxMasterId: 1, fileName: 'a.pdf', extension: 'pdf' },
+      { gxMasterId: 2, fileName: 'b.pdf', extension: 'pdf' },
+    ],
+    requestUploadUrls: async (base, auth, files) => [
+      { fileName: files[0].fileName, jobId: files[0].fileName === 'a.pdf' ? 1 : 2, uploadUrl: 'https://s3.example/put' },
+    ],
+    waitForDocumentUpload: async () => {
+      await sleep(60);
+      return { status: 'Completed' };
+    },
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.ok(
+    result.output.ingestion.timeMs < 110,
+    `ingesting 2 documents with a 60ms wait each must overlap, not sum to ~120ms (got ${result.output.ingestion.timeMs}ms)`
+  );
+});
+
 test('callApi never reads or transmits context.vars.expected', async (t) => {
   process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {

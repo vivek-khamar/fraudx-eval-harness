@@ -13,16 +13,30 @@ function formatTimestampForFilename(isoTimestamp) {
   return isoTimestamp.replace(/:/g, '-').replace(/\.\d+Z$/, '');
 }
 
-// Formats a Date using its LOCAL wall-clock components (whichever timezone
-// the process is running in), not UTC — so the "Generated at" field and the
-// filename derived from it read as the time on the machine that ran this
-// script, not a UTC timestamp that can look like it's from "yesterday" or
-// "tomorrow" depending on the reader's own timezone.
+// Formats a Date in IST (Asia/Kolkata), not UTC and not the host machine's own
+// timezone — CI runners default to UTC with no TZ set, so reading process-local
+// components (as this used to) silently rendered UTC in CI while looking correct
+// on an IST dev machine. The team is IST-based, so the "Generated at" field and
+// the filename derived from it must read IST regardless of where this runs.
 function formatLocalTimestamp(date) {
-  const pad = (n) => String(n).padStart(2, '0');
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type) => {
+    const value = parts.find((p) => p.type === type).value;
+    // Some ICU data renders midnight as "24" under hour12: false.
+    return type === 'hour' && value === '24' ? '00' : value;
+  };
   return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    `${get('year')}-${get('month')}-${get('day')}` +
+    `T${get('hour')}:${get('minute')}:${get('second')}`
   );
 }
 
@@ -91,7 +105,8 @@ function uniqueFilePath(filePath) {
   return candidate;
 }
 
-function drawTableRow(doc, columns, colWidths) {
+function drawTableRow(doc, columns, colWidths, { bold = false } = {}) {
+  doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
   const heights = columns.map((text, i) => doc.heightOfString(String(text), { width: colWidths[i] }));
   const rowHeight = Math.max(...heights) + 8;
   if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
@@ -103,6 +118,9 @@ function drawTableRow(doc, columns, colWidths) {
     doc.text(String(text), x, startY, { width: colWidths[i] });
     x += colWidths[i] + COLUMN_GAP;
   });
+  if (bold) {
+    doc.font('Helvetica');
+  }
   // pdfkit's text() with an explicit x leaves doc.x pinned at the last
   // column's x position (it doesn't restore it), so any subsequent
   // doc.text(...) call made without an explicit x (headings, paragraphs)
@@ -170,11 +188,15 @@ function renderClaimPdf(result, timestamp, filePath) {
   doc.fontSize(18).text('Claim Eval Report', { align: 'center' });
   doc.moveDown();
   doc.fontSize(11);
-  doc.text(`Bucket ID: ${bucketId}`);
-  doc.text(`Ingestion time: ${ingestionTime}s`);
-  doc.text(`Processing time: ${processingTime}s`);
-  doc.text(`Accuracy: ${accuracy}`);
-  doc.text(`Generated at: ${timestamp} (local time)`);
+  function topField(label, value) {
+    doc.font('Helvetica-Bold').text(label, { continued: true });
+    doc.font('Helvetica').text(value);
+  }
+  topField('Bucket ID: ', String(bucketId));
+  topField('Ingestion time: ', `${ingestionTime}s`);
+  topField('Processing time: ', `${processingTime}s`);
+  topField('Accuracy: ', String(accuracy));
+  topField('Generated at: ', timestamp);
   doc.moveDown();
 
   doc.fontSize(14).text('Question-by-question results');
@@ -221,7 +243,7 @@ function renderClaimPdf(result, timestamp, filePath) {
   doc.moveDown(0.5);
   doc.fontSize(10);
   const mWidths = [110, 150, 150, 50];
-  drawTableRow(doc, ['Field', 'Expected', 'Actual', 'Match'], mWidths);
+  drawTableRow(doc, ['Field', 'Expected', 'Actual', 'Match'], mWidths, { bold: true });
   drawTableRow(doc, [
     humanizeFieldName('fraudRiskScore'),
     String(expected.fraudRiskScore),
@@ -260,8 +282,9 @@ async function generatePdfReports(resultsFilePath, reportsDir, now = () => new D
   // every run of this script — including a re-run against the very same
   // results.json — gets a filename reflecting when it actually ran, instead
   // of reusing the eval's frozen results.timestamp for every regeneration.
-  // Uses local time (not UTC) so the filename and the "Generated at" field
-  // inside the PDF both read as the time on the machine that ran this script.
+  // Uses IST (not UTC, not the host's own timezone) so the filename and the
+  // "Generated at" field inside the PDF both read the same regardless of
+  // where this script runs.
   const generatedAt = formatLocalTimestamp(now());
 
   const written = [];

@@ -87,14 +87,15 @@ document-ingestion + report pipeline and scores each against a human-verified an
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
-  `reports/<bucketId>/report-<timestamp>.pdf`, where `<timestamp>` is the *local* time (not
-  UTC) that PDF-generation run actually happened (not the eval's own `results.timestamp`) — so
-  re-running against the same `results.json` adds a new, distinctly timestamped file alongside
-  any earlier ones instead of overwriting them. On the rare case of two runs landing in the same
-  second, a numeric suffix (`-2`, `-3`, ...) is appended as a fallback. The PDF opens with a
-  centered "Claim Eval Report" title and a field list (bucket ID, ingestion time, processing
-  time, accuracy, and "Generated at" — the same local timestamp used in the filename, labeled
-  "(local time)" so it's never mistaken for UTC), then the question-by-question breakdown —
+  `reports/<bucketId>/report-<timestamp>.pdf`, where `<timestamp>` is IST (Asia/Kolkata, not
+  UTC and not the host machine's own timezone) at the moment that PDF-generation run actually
+  happened (not the eval's own `results.timestamp`) — so re-running against the same
+  `results.json` adds a new, distinctly timestamped file alongside any earlier ones instead of
+  overwriting them. On the rare case of two runs landing in the same second, a numeric suffix
+  (`-2`, `-3`, ...) is appended as a fallback. The PDF opens with a centered "Claim Eval Report"
+  title and a field list (bucket ID, ingestion time, processing time, accuracy, and "Generated
+  at" — the same IST timestamp used in the filename, shown with no timezone label), then the
+  question-by-question breakdown —
   questions are numbered sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then
   Unsure, then Not Detected) rather than by their original ID, so the highest-risk findings read
   first. Each block has a heading followed by labeled Risk Status, Citation Match, Match, Answer,

@@ -85,7 +85,7 @@ test('formatTimestampForFilename converts an ISO timestamp into a filesystem-saf
   assert.equal(formatTimestampForFilename('2026-08-13T05:52:47.729Z'), '2026-08-13T05-52-47');
 });
 
-test('formatLocalTimestamp formats a Date using the process\'s local timezone, not UTC', (t) => {
+test('formatLocalTimestamp always renders IST (Asia/Kolkata), regardless of the process\'s own timezone', (t) => {
   const originalTz = process.env.TZ;
   t.after(() => {
     process.env.TZ = originalTz;
@@ -93,19 +93,18 @@ test('formatLocalTimestamp formats a Date using the process\'s local timezone, n
 
   const instant = new Date('2026-08-13T05:52:47.000Z');
 
+  // CI runners default to UTC with no TZ set; a dev machine might be in any
+  // zone. Either way the report must read IST, not whatever the host is in.
   process.env.TZ = 'UTC';
-  assert.equal(formatLocalTimestamp(instant), '2026-08-13T05:52:47');
+  assert.equal(formatLocalTimestamp(instant), '2026-08-13T11:22:47');
 
-  // Same instant, different local timezone (UTC-4 in August under EDT) — the
-  // formatted wall-clock time must actually shift, proving this reads local
-  // components rather than always rendering UTC under a different label.
   process.env.TZ = 'America/New_York';
-  assert.equal(formatLocalTimestamp(instant), '2026-08-13T01:52:47');
+  assert.equal(formatLocalTimestamp(instant), '2026-08-13T11:22:47');
 });
 
 test('formatLocalTimestamp zero-pads month, day, hour, minute, and second', () => {
   process.env.TZ = 'UTC';
-  assert.equal(formatLocalTimestamp(new Date('2026-01-02T03:04:05.000Z')), '2026-01-02T03:04:05');
+  assert.equal(formatLocalTimestamp(new Date('2026-01-02T03:04:05.000Z')), '2026-01-02T08:34:05');
 });
 
 test('humanizeFieldName splits camelCase into title-cased words', () => {
@@ -226,7 +225,7 @@ test('generatePdfReports writes one PDF per claim with a bucketId, at reports/<b
   const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   assert.equal(written.length, 1);
-  assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
+  assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T11-22-47.pdf'));
   assert.ok(fs.existsSync(written[0]));
 });
 
@@ -241,8 +240,8 @@ test('generatePdfReports stamps each run with its own actual generation time, no
   const firstRun = await generatePdfReports(resultsPath, reportsDir, () => new Date('2026-08-13T05:52:47.729Z'));
   const secondRun = await generatePdfReports(resultsPath, reportsDir, () => new Date('2026-08-14T09:15:03.000Z'));
 
-  assert.equal(firstRun[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
-  assert.equal(secondRun[0], path.join(reportsDir, '32023', 'report-2026-08-14T09-15-03.pdf'));
+  assert.equal(firstRun[0], path.join(reportsDir, '32023', 'report-2026-08-13T11-22-47.pdf'));
+  assert.equal(secondRun[0], path.join(reportsDir, '32023', 'report-2026-08-14T14-45-03.pdf'));
   assert.notEqual(secondRun[0], firstRun[0]);
   assert.ok(fs.existsSync(firstRun[0]), 'the original report must still exist');
   assert.ok(fs.existsSync(secondRun[0]), 'a new, distinctly timestamped report must have been written');
@@ -262,7 +261,7 @@ test('generatePdfReports falls back to a numeric suffix, not an overwrite, on th
 
   const secondRun = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
-  assert.equal(secondRun[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47-2.pdf'));
+  assert.equal(secondRun[0], path.join(reportsDir, '32023', 'report-2026-08-13T11-22-47-2.pdf'));
   assert.notEqual(secondRun[0], originalPath);
   assert.ok(fs.existsSync(originalPath), 'the original report must still exist');
   assert.ok(fs.existsSync(secondRun[0]), 'a new report must have been written');
@@ -307,7 +306,7 @@ test('generatePdfReports skips a claim with a bucketId but missing gradingResult
   const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
 
   assert.equal(written.length, 1);
-  assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T05-52-47.pdf'));
+  assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T11-22-47.pdf'));
   assert.ok(fs.existsSync(written[0]));
   assert.ok(!fs.existsSync(path.join(reportsDir, '99999')));
 });
@@ -334,7 +333,7 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Claim Eval Report/);
   assert.doesNotMatch(text, /Claim Eval Report.*32023/);
   assert.match(text, /Bucket ID: 32023/);
-  assert.match(text, /Generated at: 2026-08-13T05:52:47 \(local time\)/);
+  assert.match(text, /Generated at: 2026-08-13T11:22:47\n/);
   assert.match(text, /Is there fraud\?/);
   assert.match(text, /Risk Status: RISK DETECTED/);
   assert.match(text, /Answer: Yes, per doc X\./);
