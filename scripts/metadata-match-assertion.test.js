@@ -17,6 +17,11 @@ test('entitiesMatch is false for genuinely different spelling, not just case/whi
   assert.equal(entitiesMatch('One Team Restoration, Inc.', 'OneTeam Restoration, Inc.'), false);
 });
 
+test('entitiesMatch is true when only one side has a trailing parenthetical abbreviation', () => {
+  assert.equal(entitiesMatch('New York State Insurance Fund', 'New York State Insurance Fund (NYSIF)'), true);
+  assert.equal(entitiesMatch('New York State Insurance Fund (NYSIF)', 'New York State Insurance Fund'), true);
+});
+
 test('fraudRiskScoreMatches is true at exactly the 0.1 boundary', () => {
   assert.equal(fraudRiskScoreMatches(0.7, 0.8), true);
   assert.equal(fraudRiskScoreMatches(0.8, 0.7), true);

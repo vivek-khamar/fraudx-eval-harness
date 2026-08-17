@@ -4,8 +4,13 @@ function normalize(str) {
   return (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function stripTrailingAbbreviation(str) {
+  return normalize(str).replace(/\s*\([^)]*\)\s*$/, '');
+}
+
 function entitiesMatch(actual, expected) {
-  return normalize(actual) === normalize(expected);
+  return normalize(actual) === normalize(expected)
+    || stripTrailingAbbreviation(actual) === stripTrailingAbbreviation(expected);
 }
 
 function fraudRiskScoreMatches(actual, expected) {

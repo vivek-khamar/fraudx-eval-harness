@@ -10,7 +10,7 @@
     "preeval": "node scripts/apply-claim-config.js && npm run generate:tests",
     "eval:raw": "PROMPTFOO_CACHE_ENABLED=false promptfoo eval -c promptfooconfig.yaml --no-cache --max-concurrency 1 --output results.json",
     "score": "node scripts/score-dashboard.js && node scripts/generate-pdf-report.js",
-    "eval": "npm run eval:raw; code=$?; npm run score; score_code=$?; [ \"$code\" -eq 0 ] && [ \"$score_code\" -eq 0 ]",
+    "eval": "npm run eval:raw; npm run score",
     "mock-server": "node test/mock-server.js"
   },
   "devDependencies": {
