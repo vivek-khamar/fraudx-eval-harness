@@ -2,221 +2,253 @@
   {
     "bucketId": 31662,
     "claimCategoryId": 23,
-    "expectedFraudRiskScore": 0.6826285714,
+    "expectedFraudRiskScore": 0.7524,
     "expectedClaimantName": "Jose Briones",
-    "expectedDefendant": "One Team Restoration, Inc.",
+    "expectedDefendant": "OneTeam Restoration, Inc.",
     "expectedInsuranceFirm": "New York State Insurance Fund (NYSIF)",
-    "summary": "Jose Briones, born April 14, 1985, filed a worker’s compensation claim (WCB #: G275-8261, Carrier Case#: 72548647-373 [[0], [2], [3]]) following an incident on March 16, 2020, while employed as a Construction Worker at OneTeam Restoration, Inc.. Mr. Briones alleges he fell approximately 9 feet backwards while reaching for a bucket, resulting in injuries to his head, neck, mid-back, lower back, bilateral shoulders, hips, knees, and ankles. He was reportedly wearing a helmet at the time of the fall and was admitted to St. Barnabas Medical Center for approximately 8 days. A medical claim form (form number 1500 (02-12)) submitted to the New York State Insurance Fund (NYSIF) indicates the condition is *not* related to employment. However, a separate document, a Notice of Objection to a Payment of a Bill for Treatment Provided, identifies NYSIF as the insurer and lists the claim number as 72548647-373. The patient’s address is listed as 37 41 79 Street, Jackson Heights, NY 11372 while another document lists his address as 764B East 149th Street 2, Bronx, NY 10455. An independent neurologic evaluation was conducted on January 5, 2024, by Santoshi Billakota, MD, at the request of the insurer. Dr. Billakota notes the claimant presented for reported injuries including a Traumatic Brain Injury (TBI) and Post-Concussion Syndrome (PCS). The evaluation was attended by Mr. Briones, his legal representative Matthew Johnson, and an interpreter Nelly Vega. A medical billing objection form identifies Shiarree S Evaristo as the claimant’s healthcare provider. The form also indicates a claim admin claim number of 72548647-373 and the insurer ID as W204002. The last four digits of the claimant’s Social Security Number are listed as 5298.",
+    "summary": "Jose Briones, born April 14, 1985, filed a worker's compensation claim (WCB #: G275-8261, Carrier Case#: 72548647-373 [[0], [2], [3]]) following an incident on March 16, 2020, while employed as a Construction Worker at OneTeam Restoration, Inc.. Mr. Briones alleges he fell approximately 9 feet backwards while reaching for a bucket, resulting in injuries to his head, neck, mid-back, lower back, bilateral shoulders, hips, knees, and ankles. He was reportedly wearing a helmet at the time of the fall and was admitted to St. Barnabas Medical Center for approximately 8 days. A medical claim form (form number 1500 (02-12)) submitted to the New York State Insurance Fund (NYSIF) indicates the condition is *not* related to employment. However, a separate document, a Notice of Objection to a Payment of a Bill for Treatment Provided, identifies NYSIF as the insurer and lists the claim number as 72548647-373. The patient's address is listed as 37 41 79 Street, Jackson Heights, NY 11372 while another document lists his address as 764B East 149th Street 2, Bronx, NY 10455. An independent neurologic evaluation was conducted on January 5, 2024, by Santoshi Billakota, MD, at the request of the insurer. Dr. Billakota notes the claimant presented for reported injuries including a Traumatic Brain Injury (TBI) and Post-Concussion Syndrome (PCS). The evaluation was attended by Mr. Briones, his legal representative Matthew Johnson, and an interpreter Nelly Vega. A medical billing objection form identifies Shiarree S Evaristo as the claimant's healthcare provider. The form also indicates a claim admin claim number of 72548647-373 and the insurer ID as W204002. The last four digits of the claimant's Social Security Number are listed as 5298.",
     "questions": [
       {
-        "id": 1480,
-        "question": "Are any of the plaintiff's attorneys included in the list of attorneys bad actors?",
-        "expectedAnswer": "Yes — plaintiff's attorney Silberstein, Awad & Miklos, P.C. is flagged as a bad-actor attorney.",
-        "expectedRiskStatus": "RISK_DETECTED"
-      },
-      {
-        "id": 1625,
+        "id": 113,
         "question": "Is there any evidence of irregular procedures or violations in the plaintiff's case pertaining to workers compensation rules and regulations?",
         "expectedAnswer": "RISK DETECTED: There is evidence of irregular procedures or violations of workers' compensation rules and regulations in the plaintiff's case.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [3]:\nNotice of Objection to a Payment of a Bill for Treatment Provided. The insurer is objecting to the payment because the treatment deviates from the Guidelines without securing a Variance [197], specifically noting that a variance was not secured for continued physical therapy per MTG D6A. The bill dated May 16, 2024, for treatment between January 30, 2024, and February 22, 2024, is for $861.32, and the full amount is in dispute."
       },
       {
-        "id": 1478,
+        "id": 120,
+        "question": "Did plaintiff claim lost wages upon retaining counsel, but returned to work shortly after the accident?",
+        "expectedAnswer": "RISK DETECTED: The plaintiff claimed lost wages upon retaining legal counsel, but returned to work shortly after the accident, indicating a potential misrepresentation of income loss.",
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [9, 10, 11]:\nOCCUPATIONAL HISTORY. On the date of the accident were you employed: [Checked] Yes. Occupation: Construction. Did you lose any time from work? [Unmarked] Yes [Unmarked] No. Why are you not working (if not)? Pain. If Yes how long? [Blank]."
+      },
+      {
+        "id": 111,
+        "question": "Display Question: Is there evidence that the plaintiff was identified by the ISO or NICB as a fraud risk red flag?",
+        "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff is flagged as a fraud risk by ISO or NICB due to missing or inconclusive screening data.",
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [12]:\nNote: valuation objections should not be submitted by the insurer in the following scenarios: 1) the amount billed for the particular CPT code is in excess of the amount designated by the applicable medical fee schedule, and the insurer pays the bill at the appropriate medical fee schedule amount. Information for Claimant: Workers' Compensation insurance provides medical, surgical, optometric or other attendance or treatment necessitated by the work-related injury or illness without cost to the claimant."
+      },
+      {
+        "id": 112,
+        "question": "Is there evidence that the plaintiff's was identified by the ISO or NICB as having had 2 or more claims over the last 3 years?",
+        "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff has had two or more claims over the last three years due to missing or inconclusive information from ISO or NICB sources.",
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [10]:\n{\"form_title\": \"HEALTH INSURANCE CLAIM FORM\", \"form_number\": \"FORM 1500 (02-12)\"}\nThe claim is for patient Jose Briones Cadena, born on April 14, 1985, with insurance policy number G2758261. The patient resides at 37 41 79 Street, Jackson Heights, NY 11372. The condition is not related to employment, but is related to another accident with claim ID 72548647 under NYSIF. The date of the injury was March 16, 2020. The medical services were provided by Englington Medical P.C. located at 9525 Jamaica Avenue, Woodhaven, NY 11421."
+      },
+      {
+        "id": 88,
         "question": "Is the plaintiff's address included in the list of known fraud claimants addresses?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff's address is included in the list of known fraud claimants addresses due to incomplete or inconclusive information.",
         "expectedRiskStatus": "UNSURE"
       },
       {
-        "id": 1626,
-        "question": "Did plaintiff claim lost wages upon retaining counsel, but returned to work shortly after the accident?",
-        "expectedAnswer": "RISK DETECTED: The plaintiff claimed lost wages upon retaining legal counsel, but returned to work shortly after the accident, indicating a potential misrepresentation of income loss.",
-        "expectedRiskStatus": "RISK_DETECTED"
-      },
-      {
-        "id": 1627,
-        "question": "Display Question: Is there evidence that the plaintiff was identified by the ISO or NICB as a fraud risk red flag?",
-        "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff is flagged as a fraud risk by ISO or NICB due to missing or inconclusive screening data.",
-        "expectedRiskStatus": "UNSURE"
-      },
-      {
-        "id": 1477,
-        "question": "Is there evidence that the plaintiff's was identified by the ISO or NICB as having had 2 or more claims over the last 3 years?",
-        "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff has had two or more claims over the last three years due to missing or inconclusive information from ISO or NICB sources.",
-        "expectedRiskStatus": "UNSURE"
-      },
-      {
-        "id": 1479,
+        "id": 107,
         "question": "Are any of the plaintiff's medical providers included in the list of medical providers bad actors?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's medical provider **Pain Physicians NY PLLC** is included in the list of medical providers bad actors.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named '20240301+-+0001-27+Ex.+J-1.6+Compl.+Med+Record+-+Claimant+A+-+FS_Part2-15-20.pdf' and pages [5]:\nPain Physicians NY. Center for Complete Neuromuscular, Spine & Joint Medicine. 780 8th Ave Suite 2A, New York, NY 10036. Tel: (212)757-0222. Test Date: April 29, 2021. ELECTROMYOGRAPHY AND NERVE CONDUCTION VELOCITY REPORT UPPER EXTREMITIES."
       },
       {
-        "id": 1481,
+        "id": 89,
+        "question": "Are any of the plaintiff's attorneys included in the list of attorneys bad actors?",
+        "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff's attorneys are included in the list of attorneys bad actors due to incomplete or inconclusive information.",
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [7]:\nHEALTH INSURANCE CLAIM FORM. The claim form is for Jose Briones, born April 14, 1985, with policy number G2758261. He resides at 37 41 79 Street, Jackson Heights, NY 11372. The billing provider is Englington Medical P.C. located at 9525 Jamaica Avenue, Woodhaven, NY 11421."
+      },
+      {
+        "id": 90,
         "question": "Do several plaintiff's medical providers share the same specifc address?",
         "expectedAnswer": "RISK DETECTED: Multiple medical providers associated with the plaintiff — Englington Medical P.C., and Pain Physicians NY — are listed at the same address: 9525 Jamaica Avenue, Woodhaven, NY 11421.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [7]:\nHEALTH INSURANCE CLAIM FORM. Billing Provider Info: ENGLINTON MEDICAL P.C, 9525 JAMAICA AVENUE, WOODHAVEN, NY 11421, (718) 718-441-4070. Service Facility Location: ENGLINTON MEDICAL P.C, 9525 JAMAICA AVENUE, WOODHAVEN NY 11421."
       },
       {
-        "id": 1482,
+        "id": 92,
         "question": "Is there evidence that other people were present at the side of the accident and allegedly witnessed the accident  but yet no one formally confirmed the plaintiff's accident account in deposition or written statement?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether others were present and failed to confirm the plaintiff's account due to incomplete or inconclusive information regarding witness presence and statements.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1]:\nJanuary 05, 2024. Santoshi Billakota, MD. As per your request, I examined the above-referenced claimant, Jose Briones, for the purpose of an independent neurologic evaluation on January 05, 2024, at my Bronx, NY office. The claimant presented a valid NYS Driver's License to verify his identity."
       },
       {
-        "id": 1483,
+        "id": 122,
         "question": "Was the plaintiff's accident reported to a supervisor?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff reported the accident to a supervisor due to incomplete or inconclusive case documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1, 2]:\nSince the accident on March 16, 2020, Mr. Jose Briones has received treatment from a neurologist, neuropsychologist, orthopedic surgeon, spine surgeon, cognitive therapy, and physical therapy. The claimant has undergone further diagnostic testing to include MRIs of the brain, cervical spine, thoracic spine, lumbar spine, left shoulder, bilateral knees, and EMG of bilateral upper extremities. He underwent surgery on his neck on 10/16/2020, lower back on 01/27/2023, right knee on 04/28/2023, and left knee on 08/25/2023. He denies receiving any injections. EMPLOYMENT STATUS: At the time of the incident, the claimant was employed as a Construction Worker. He is currently not working. PAST MEDICAL HISTORY: As per medical records, Significant for hypertension, and chronic renal insufficiency. Surgical History Significant for left elbow, right hand, and right knee from injuries sustained in combat operations."
       },
       {
-        "id": 1484,
+        "id": 114,
         "question": "Was the plaintiff not admitted to the hospital on the day of his first visit to the ER but received subsequent treatments for a period longer than 12 weeks?",
-        "expectedAnswer": "RISK DETECTED: The plaintiff was not admitted to the hospital on the day of the initial ER visit, but received subsequent treatments for a period exceeding 12 weeks.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedAnswer": "RISK DETECTED: The plaintiff was not admitted to the hospital on the day of the initial ER visit, but received subsequent treatments for a period exceeding 12 weeks. excerpts...",
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\n{\"table_title\": \"HOSPITAL VISIT\"}\nThe patient went to the hospital and arrived via ambulance. They went immediately after the incident and were admitted to the hospital. They were discharged after 2 days. No specific tests such as X-ray, CT scan, or MRI were performed on any body part. The treatment received consisted of pain medications. The patient received no additional treatment such as canes, crutches, or braces, and is not using any such devices."
       },
       {
-        "id": 1485,
+        "id": 93,
         "question": "Did the plaintiff's medical condition not improve after 45 days of treatment?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff's medical condition improved after 45 days of treatment due to incomplete or inconclusive medical records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [5]:\nPT PROGRESS NOTES. Patient: BRIONES CADENA, JOSE. Diagnosis: S/P LUMBAR Fusion on 1/27/23. This table tracks the physical therapy progress and treatment modalities for Jose Briones Cadena following a lumbar fusion surgery. It documents subjective pain levels, objective physical findings including strength and range of motion, and the specific CPT-coded treatments administered between November 20, 2023, and February 8, 2024. Patient strength showed a gradual improvement from 3+ to 4 over the recorded period, with consistent use of therapeutic exercise and heat/cold therapy."
       },
       {
-        "id": 1486,
+        "id": 94,
         "question": "Is the period of time between the date of the accident and the earliest date plaintiff sought treatment conducted after the initial ER visit unexpectedly long given the plaintiff's medical findings by medical providers?",
         "expectedAnswer": "RISK DETECTED: The delay between the accident and the earliest post-ER treatment appears unreasonably long based on the plaintiff's medical findings.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1]:\nJanuary 05, 2024. Santoshi Billakota, MD, Diplomate American Board of Neurology. Claimant: Jose Briones. Date of Loss: March 16, 2020. HISTORY AS PROVIDED BY CLAIMANT: Mr. Briones is a 38-year-old male who was involved in a work-related incident on March 16, 2020. The claimant states that while working as a Construction Worker he fell backwards approximately 9 feet while reaching for a bucket. He sustained injuries to his head, neck, mid-back, lower back, bilateral shoulders, bilateral hips, bilateral knees, and bilateral ankles. He was taken via ambulance to St. Barnabas Medical Center, where he was evaluated and admitted for approximately 8 days."
       },
       {
-        "id": 1487,
+        "id": 91,
         "question": "Is there any evidence that pre-existing medical conditions or prior injuries could be a factor in plaintiff's medical reports?",
         "expectedAnswer": "RISK DETECTED: There is evidence that pre-existing medical conditions or prior injuries may be a factor in the plaintiff's medical reports.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1, 2]:\nSince the accident on March 16, 2020, Mr. Jose Briones has received treatment from a neurologist, neuropsychologist, orthopedic surgeon, spine surgeon, cognitive therapy, and physical therapy. PAST MEDICAL HISTORY: As per medical records, Significant for hypertension, and chronic renal insufficiency. Surgical History Significant for left elbow, right hand, and right knee from injuries sustained in combat operations. PRIOR ACCIDENTS/INJURIES: None Reported. SUBSEQUENT INJURIES: None Reported."
       },
       {
-        "id": 1488,
+        "id": 121,
         "question": "Are there inconsistencies between the plaintiff's initial medical findings from the ER doctors and the the plaintiff's medical findings from plaintiff's doctors after the plaintiff's initial ER visit?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether inconsistencies exist between ER and follow-up findings due to missing or insufficient medical records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named '20240301+-+0001-27+Ex.+J-1.6+Compl.+Med+Record+-+Claimant+A+-+FS_Part2-15-20.pdf' and pages [5, 6]:\nNerve Conduction velocity (NCV) and electromyography (EMG) studies are commonly performed in the evaluation of neuromuscular disorders. CHIEF COMPLAINTS: The patient, Claimant A, is a male who presents with complaints of neck pain with radiation to both upper extremities. Test Date: April 29, 2021."
       },
       {
-        "id": 1489,
+        "id": 97,
         "question": "Was the plaintiffs description of the cause of the injury inconsistent with the ER medical findings?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's description of the cause of the injury is inconsistent with the ER medical records.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\n{\"table_title\": \"HOSPITAL VISIT\"}\nThe patient went to the hospital and arrived via ambulance. They went immediately after the incident and were admitted to the hospital. They were discharged after 2 days. No specific tests such as X-ray, CT scan, or MRI were performed on any body part. The treatment received consisted of pain medications."
       },
       {
-        "id": 1490,
+        "id": 96,
         "question": "Was there clear medical evidence that the plaintiff's medical conditions and findings in the ER would result in the subsequent medical treatments?",
         "expectedAnswer": "RISK DETECTED: There is no clear medical evidence that the plaintiff's medical conditions and ER findings would result in the subsequent medical treatments.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [10]:\nHEALTH INSURANCE CLAIM FORM. The claim is for patient Jose Briones Cadena, born on April 14, 1985, with insurance policy number G2758261. The condition is not related to employment, but is related to another accident with claim ID 72548647 under NYSIF. Diagnosis: M23.92."
       },
       {
-        "id": 1491,
+        "id": 95,
         "question": "Was there clear medical evidence that the plaintiff's medical conditions and findings in the ER would result in the subsequent surgery?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff's ER findings support the need for surgery due to incomplete or inconclusive medical documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1, 2]:\nSince the accident on March 16, 2020, Mr. Jose Briones has received treatment from a neurologist, neuropsychologist, orthopedic surgeon, spine surgeon, cognitive therapy, and physical therapy. He underwent surgery on his neck on 10/16/2020, lower back on 01/27/2023, right knee on 04/28/2023, and left knee on 08/25/2023. PAST MEDICAL HISTORY: Significant for hypertension, and chronic renal insufficiency. Surgical History Significant for left elbow, right hand, and right knee from injuries sustained in combat operations."
       },
       {
-        "id": 1492,
+        "id": 115,
         "question": "Was the plaintiff not admitted to the hospital on the day of his first visit to the ER on or after the day of the accident but was deemed 100% Disabled by evaluating doctors in the lawsuit?",
         "expectedAnswer": "RISK DETECTED: The plaintiff was not admitted to the hospital on the day of the initial ER visit related to the accident but was later deemed 100% disabled by evaluating doctors in the lawsuit.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\n{\"table_title\": \"HOSPITAL VISIT\"}\nThe patient went to the hospital and arrived via ambulance. They went immediately after the incident and were admitted to the hospital. They were discharged after 2 days."
       },
       {
-        "id": 1493,
+        "id": 98,
         "question": "Is the plaintiff over 35 years of age? If so, were there mention of the word degenerative in any medical reports and MRI or x-ray findings by plaintiff's medical providers?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether degenerative findings were appropriately noted due to missing age confirmation or insufficient medical records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [9]:\n{\"figure_title\": \"Medical Care Questionnaire\"}\nIn the initial care section, the patient identified by number 4012009246 first sought medical attention from an orthopedic surgeon and a neurologist. The initial treatment started was physical therapy. For diagnostic testing, X-rays were performed on the head, neck, lower back, right knee, and left knee. MRI scans were comprehensive, covering the head, neck, lower back, both shoulders, and both knees."
       },
       {
-        "id": 1494,
+        "id": 99,
         "question": "What was the plaintiff's pain rating and what was his blood pressure and heart rate at the ER and are these findings inconsistent with the pain rating table of blood pressure and heart beats data?",
-        "expectedAnswer": "RISK UNKNOWN: Unable to determine consistency between reported pain level and vital signs due to incomplete or missing ER documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedAnswer": "RISK UNKNOWN: Unable to determine consistency between reported pain level and vital signs due to incomplete or missing ER documentation. excerpts...",
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [9, 10, 11]:\nOCCUPATIONAL HISTORY: Are you working right now?: [Unmarked]. On the date of the accident were you employed: [Checked] Yes. Occupation: Construction. Did you lose any time from work? [Unmarked] Yes [Unmarked] No. Why are you not working (if not)? Pain."
       },
       {
-        "id": 1495,
+        "id": 116,
         "question": "Is there social postings evidence that the plaintiff's life and physical activities that would contradict plaintiff's claim of disability?",
         "expectedAnswer": "No sources found to answer this query!",
         "expectedRiskStatus": "UNSURE"
       },
       {
-        "id": 1496,
+        "id": 117,
         "question": "Did the plaintiffs description of the cause of the injury evolve over time?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's description of the cause of the injury changed over time, indicating inconsistencies in the account of how the injury occurred.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [7]:\nHEALTH INSURANCE CLAIM FORM. The claim form is for Jose Briones, born April 14, 1985, with policy number G2758261. The injury occurred on March 16, 2020, and the diagnosis is coded as M23.92. Field 10c Other Accident: YES. Field 10c Other Claim ID: 72548647."
       },
       {
-        "id": 1497,
+        "id": 100,
         "question": "Was the plaintiff's original description of the cause of the injury unrelated to New York, Labor Law 240 implications but subsequent description became relevant to that law and its consequences?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's original description of the injury did not relate to Labor Law §240, but a subsequent version of the account included new elements that would trigger the law's application.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1]:\nJanuary 05, 2024. Santoshi Billakota, MD, Diplomate American Board of Neurology. Claimant: Jose Briones. Date of Loss: March 16, 2020. As per your request, I examined the above-referenced claimant, Jose Briones, for the purpose of an independent neurologic evaluation on January 05, 2024, at my Bronx, NY office. HISTORY AS PROVIDED BY CLAIMANT: Mr. Briones is a 38-year-old male who was involved in a work-related incident on March 16, 2020. The claimant states that while working as a Construction Worker he fell backwards approximately 9 feet while reaching for a bucket. He sustained injuries to his head, neck, mid-back, lower back, bilateral shoulders, bilateral hips, bilateral knees, and bilateral ankles. As per the medical records provided the claimant was wearing a helmet at the time. He was taken via ambulance to St. Barnabas Medical Center, where he was evaluated and admitted for approximately 8 days."
       },
       {
-        "id": 1498,
+        "id": 101,
         "question": "Was the plaintiff's original description of the cause of the injury unrelated to New York, Labor Law 241 implications but subsequent description became relevant to that law and its consequences?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's original description of the injury did not involve conditions covered by Labor Law §241, but a subsequent version of the account added facts making the statute applicable.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1]:\nJanuary 05, 2024. Santoshi Billakota, MD. Claimant: Jose Briones. As per your request, I examined the above-referenced claimant, Jose Briones, for the purpose of an independent neurologic evaluation on January 05, 2024. HISTORY AS PROVIDED BY CLAIMANT: Mr. Briones is a 38-year-old male who was involved in a work-related incident on March 16, 2020. The claimant states that while working as a Construction Worker he fell backwards approximately 9 feet while reaching for a bucket."
       },
       {
-        "id": 1499,
+        "id": 102,
         "question": "Did plaintiff's diagnosis gets worse over time and include injuries to parts of body not reported when first sought care after the accident?",
         "expectedAnswer": "RISK DETECTED: The plaintiff's diagnosis worsened over time and came to include injuries to additional body parts that were not reported during the initial medical visit following the accident.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\nACCIDENT DETAILS. Type of Exam: Worker's Comp. Briefly describe the incident: Fell backwards from approximately 9 feet. Body parts were injured at the time of the accident? Head, Neck, Mid Back, Lower back, Right shoulder Right elbow Right wrist Right hand Right hip Right knee Right ankle Right foot, Left shoulder Left elbow Left wrist Left hand Left hip Left knee Left ankle Left foot."
       },
       {
-        "id": 1500,
+        "id": 103,
         "question": "Did the plaintiff statements in deposition contradict the accident witnesses statements?",
         "expectedAnswer": "No sources found to answer this query!",
         "expectedRiskStatus": "UNSURE"
       },
       {
-        "id": 1501,
+        "id": 118,
         "question": "Did the plaintiff develop increasingly frequent non-verifiable medical conditions like vertigo, headache, PTSD, anxiety, Phobias, insomnia, and other psychological conditions over weeks and months following the accident?",
         "expectedAnswer": "RISK DETECTED: The plaintiff reported a growing number of non-verifiable, subjective medical conditions (e.g., headache, post-concussion syndrome, potential traumatic brain injury) over time following the accident, with no clear objective medical evidence supporting a progressive or related injury.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\n{\"table_title\": \"HOSPITAL VISIT\"}\nThe patient went to the hospital and arrived via ambulance. They went immediately after the incident and were admitted to the hospital. They were discharged after 2 days. No specific tests such as X-ray, CT scan, or MRI were performed on any body part. The treatment received consisted of pain medications. The patient received no additional treatment such as canes, crutches, or braces, and is not using any such devices."
       },
       {
-        "id": 1502,
+        "id": 104,
         "question": "Is there any evidence that plaintiff did not remember any of the doctors or locations or clinics where he received treatment for this accident?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the plaintiff remembered the treating doctors or locations due to incomplete or missing documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\nMotor Vehicle Accident Details. Regarding the motor vehicle accident, the role of the person was not specified. It was not recorded whether the person was wearing a seatbelt. It was not recorded whether the airbags deployed."
       },
       {
-        "id": 1503,
+        "id": 105,
         "question": "Did the date of plaintiff injury occur within 30 days of his first day on the job site where the accident happened?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine whether the injury occurred within 30 days of the plaintiff starting work due to missing or inconclusive employment or incident records.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\nACCIDENT DETAILS. Briefly describe the incident: Fell backwards from approximately 9 feet. Body parts were injured at the time of the accident? Head, Neck, Mid Back, Lower back."
       },
       {
-        "id": 1504,
+        "id": 106,
         "question": "Is there photographic or video evidence that the plaintiff showing no signs of impairments or reduced physical capabilities that would contradict plaintiff's claim of disability?",
-        "expectedAnswer": "RISK UNKNOWN: Unable to determine whether visual evidence contradicts the plaintiff’s disability claim due to missing, poor quality, or inconclusive footage.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedAnswer": "RISK UNKNOWN: Unable to determine whether visual evidence contradicts the plaintiff's disability claim due to missing, poor quality, or inconclusive footage.",
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [6, 7]:\nNeurologic Examination of Jose Briones (Worker's Compensation IME) - January 05, 2024. DIAGNOSIS: Post-Concussion Syndrome. No evidence of Traumatic Brain Injury on this examination. TREATMENT: Based upon evaluation as well as a review of medical records, the claimant would not benefit from additional medical treatment, physical therapy, diagnostic testing, or evaluations. DISABILITY: Based on the findings of today's examination, there is no evidence of an overall degree of causally-related disability."
       },
       {
-        "id": 1505,
+        "id": 119,
         "question": "Did plaintiff retained legal counsel to represent this case on his behalf within 30 days of the accident?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine the timing of legal representation due to incomplete or missing documentation.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1, 2]:\nSince the accident on March 16, 2020, Mr. Jose Briones has received treatment from a neurologist, neuropsychologist, orthopedic surgeon, spine surgeon, cognitive therapy, and physical therapy. EMPLOYMENT STATUS: At the time of the incident, the claimant was employed as a Construction Worker. He is currently not working. PAST MEDICAL HISTORY: As per medical records, Significant for hypertension, and chronic renal insufficiency. Surgical History Significant for left elbow, right hand, and right knee from injuries sustained in combat operations."
       },
       {
-        "id": 1568,
+        "id": 108,
         "question": "Did the plaintiff retain legal counsel to represent him in this case prior than seeking further medical attention susbsequent to the ER visit?",
         "expectedAnswer": "RISK DETECTED: The plaintiff retained legal counsel prior to seeking further medical attention beyond the ER visit, indicating a potential litigation-driven strategy over medically guided recovery.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1, 2]:\nSince the accident on March 16, 2020, Mr. Jose Briones has received treatment from a neurologist, neuropsychologist, orthopedic surgeon, spine surgeon, cognitive therapy, and physical therapy. He underwent surgery on his neck on 10/16/2020, lower back on 01/27/2023, right knee on 04/28/2023, and left knee on 08/25/2023."
       },
       {
-        "id": 1569,
+        "id": 109,
         "question": "Is there evidence of how plaintiff's obtained legal counsel to represent this case on his behalf?",
         "expectedAnswer": "RISK UNKNOWN: Unable to determine how the plaintiff obtained legal counsel due to incomplete or inconclusive case file information.",
-        "expectedRiskStatus": "UNSURE"
+        "expectedRiskStatus": "UNSURE",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [8]:\nThis is a personal information intake form for a patient named Jose Briones, used as part of a medical evaluation. He is a 38-year-old male born on April 14, 1985. His physical attributes are listed as 6 feet tall with black hair and brown eyes. He is right-handed, does not require an interpreter, and drove himself to the examination."
       },
       {
-        "id": 1570,
+        "id": 110,
         "question": "Is there any evidence that the plaintiff began treatments with his current medical providers because he followed the instructions of his attorneys?",
         "expectedAnswer": "RISK DETECTED: There is evidence that the plaintiff initiated treatment with current medical providers based on instructions or referrals from legal counsel, raising concerns that the treatment may be litigation-motivated rather than medically initiated.",
-        "expectedRiskStatus": "RISK_DETECTED"
+        "expectedRiskStatus": "RISK_DETECTED",
+        "expectedChunkText": "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1]:\nJanuary 05, 2024. Santoshi Billakota, MD. Claimant: Jose Briones. As per your request, I examined the above-referenced claimant, Jose Briones, for the purpose of an independent neurologic evaluation on January 05, 2024, at my Bronx, NY office. The claimant was accompanied by his legal representative, Matthew Johnson, and Nelly Vega, who assisted as an interpreter."
       }
     ]
   }
