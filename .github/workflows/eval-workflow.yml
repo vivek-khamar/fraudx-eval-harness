@@ -54,6 +54,9 @@ jobs:
       GRADER_PROVIDER: ${{ secrets.GRADER_PROVIDER }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
       CLAIM_NAME: ${{ inputs.newClaimName }}
       INGESTION_MODEL_NAME: ${{ inputs.ingestionModelName }}
       PROCESSING_MODEL_NAME: ${{ inputs.processingModelName }}
