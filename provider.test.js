@@ -27,6 +27,11 @@ function mockFraudxClient(t, overrides) {
 // process under node:test, so this module-wide default doesn't leak to other test files.
 s3Client.fetchChunkGroundingData = async () => null;
 
+// Most fixtures here have no grounding data on purpose, and provider.js now warns on every
+// such run — expected noise for this file, so it's silenced module-wide. The one test that
+// asserts on a warning installs (and restores) its own console.warn capture over this stub.
+console.warn = () => {};
+
 function mockS3Client(t, impl) {
   s3Client.fetchChunkGroundingData = impl;
   t.after(() => {
@@ -93,7 +98,9 @@ function happyPathMocks(calls) {
     },
     fetchReport: async () => {
       calls.push('fetchReport');
-      return { reportId: 'report-1', summary: 's', questions: [] };
+      // A real report always carries the bucketId the S3 chunk-grounding file is keyed by;
+      // the test below that covers a report *without* one overrides fetchReport itself.
+      return { reportId: 'report-1', summary: 's', bucketId: 32023, questions: [] };
     },
   };
 }
@@ -125,7 +132,7 @@ test('callApi orchestrates the full sequence in order and returns the report', a
   ]);
   assert.equal(typeof result.output.ingestion.timeMs, 'number');
   assert.equal(typeof result.output.processing.timeMs, 'number');
-  assert.deepEqual(result.output.report, { reportId: 'report-1', summary: 's', questions: [] });
+  assert.deepEqual(result.output.report, { reportId: 'report-1', summary: 's', bucketId: 32023, questions: [] });
 });
 
 test('callApi measures ingestion (the upload loop) and processing (claim trigger + poll) as independent timers', async (t) => {
@@ -487,4 +494,34 @@ test('callApi collapses byte-identical chunk text cited twice into one copy, kee
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
   assert.equal(result.output.citedDocumentsText['dup.pdf'], 'IDENTICAL PASSAGE\n\nA GENUINELY DIFFERENT PASSAGE');
+});
+
+test('callApi skips the S3 lookup and warns when the report has no bucketId', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    fetchReport: async () => ({ reportId: 'report-1', summary: 's', questions: [] }), // no bucketId
+  });
+  mockS3Client(t, async () => {
+    throw new Error('fetchChunkGroundingData must not be called without a bucketId');
+  });
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (msg) => warnings.push(msg);
+  t.after(() => {
+    console.warn = originalWarn;
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.chunkGroundingData, null);
+  assert.deepEqual(result.output.citedDocumentsText, {});
+  assert.ok(
+    warnings.some((w) => /no bucketId/.test(w)),
+    `a missing bucketId must be warned about, not silently fetched as "undefined.json" (warnings: ${JSON.stringify(warnings)})`
+  );
 });

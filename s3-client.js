@@ -47,6 +47,11 @@ async function fetchChunkGroundingData(bucketId, timeoutMs) {
       { abortSignal: AbortSignal.timeout(timeoutMs) }
     );
   } catch (err) {
+    // Checked before NoSuchKey — a timeout is a different failure, and the AWS SDK's raw
+    // abort error says nothing about which call died or how long it waited.
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Fetching the chunk-grounding file for bucketId ${bucketId} timed out after ${timeoutMs}ms`);
+    }
     if (err.name === 'NoSuchKey') {
       return null;
     }

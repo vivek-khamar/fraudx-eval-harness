@@ -106,3 +106,29 @@ test('fetchChunkGroundingData throws when the parsed JSON has no questionnaire a
 
   await assert.rejects(() => fetchChunkGroundingData(12345, 5000), /missing a "questionnaire" array/);
 });
+
+test('fetchChunkGroundingData converts an S3 timeout into a clear timed-out error', async (t) => {
+  mockSend(t, async () => {
+    const err = new Error('The operation was aborted due to timeout');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+
+  await assert.rejects(
+    () => fetchChunkGroundingData(12345, 5000),
+    /Fetching the chunk-grounding file for bucketId 12345 timed out after 5000ms/
+  );
+});
+
+test('fetchChunkGroundingData converts an aborted S3 request into the same timed-out error', async (t) => {
+  mockSend(t, async () => {
+    const err = new Error('Request aborted');
+    err.name = 'AbortError';
+    throw err;
+  });
+
+  await assert.rejects(
+    () => fetchChunkGroundingData(12345, 5000),
+    /Fetching the chunk-grounding file for bucketId 12345 timed out after 5000ms/
+  );
+});

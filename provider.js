@@ -69,14 +69,26 @@ class FraudXClaimProvider {
     const report = await fraudxClient.fetchReport(base, bucket.latestReportId, auth, timeoutMs);
 
     const citations = report.questions.flatMap((q) => extractCitedCitationsFromText(q.answer));
-    // SKIP_S3_GROUNDING=true is the local-dry-run escape hatch (npm run mock-server): the mock
-    // server has no real S3-backed grounding data for its fake bucketId, and this flow needs no
-    // AWS credentials at all. Skipping lands on exactly the same state as a missing grounding
-    // file — chunkGroundingData null, citedDocumentsText {} — never set it in CI/production.
-    const skipS3Grounding = process.env.SKIP_S3_GROUNDING === 'true';
-    const chunkGroundingData = skipS3Grounding
-      ? null
-      : await s3Client.fetchChunkGroundingData(report.bucketId, timeoutMs);
+    // Three ways chunkGroundingData ends up null, all landing on the same downstream state
+    // (citedDocumentsText {}, every citationMatch "no citation resolved"). Only two of them
+    // are unexpected, so only those two warn.
+    let chunkGroundingData = null;
+    if (process.env.SKIP_S3_GROUNDING === 'true') {
+      // The local-dry-run escape hatch (npm run mock-server): the mock server has no real
+      // S3-backed grounding data for its fake bucketId, and this flow needs no AWS credentials
+      // at all. Deliberate, so no warning. Never set it in CI/production.
+    } else if (!report.bucketId) {
+      // Without this guard we'd fetch "undefined.json", get a graceful NoSuchKey -> null, and
+      // silently look exactly like a claim whose grounding file legitimately doesn't exist.
+      console.warn('Report has no bucketId — skipping S3 chunk-grounding lookup');
+    } else {
+      chunkGroundingData = await s3Client.fetchChunkGroundingData(report.bucketId, timeoutMs);
+      if (!chunkGroundingData) {
+        console.warn(
+          `No S3 chunk-grounding file found for bucketId ${report.bucketId} — citedDocumentsText and citationMatch will be empty for this claim`
+        );
+      }
+    }
     const citedDocumentsText = {};
     if (chunkGroundingData) {
       const chunksByFileName = new Map();
