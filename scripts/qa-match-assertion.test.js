@@ -390,3 +390,19 @@ test('qaMatchAssertion correctly reads expectedChunkText when vars are built by 
   assert.equal(result.namedScores.citationMatch, 1);
   assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
 });
+
+test('qaMatchAssertion lists a fileName cited via two different chunks only once in actualCitedFileNames', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  // Citations are deduplicated by (documentId, chunkId), not by fileName — one source document
+  // split across two cited chunks is two distinct citations, but still one cited file.
+  const output = fakeOutput();
+  output.report.questions[0].answer = [
+    'see <InTextCitation fileName="same.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and <InTextCitation fileName="same.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+  ].join(' ');
+
+  const result = await qaMatchAssertion(output, fakeContext());
+
+  assert.deepEqual(result.perQuestionBreakdown[0].actualCitedFileNames, ['same.pdf']);
+});
