@@ -30,25 +30,32 @@ document-ingestion + report pipeline and scores each against a human-verified an
       all of a claim's questions) that judges that question's actual answer text against its gold
       `expectedAnswerSummary` for semantic (not exact-wording) match, and returns the fraction of
       questions that match.
-    - `citationMatch` (deterministic, optional per question): a question in `testdata/claims.json`
-      can set an `expectedCitedFileNames` array — the source document `fileName`(s) that support
-      its answer. For every question that sets it, `citationMatch` checks whether the real
-      answer's `<InTextCitation fileName="...">` tags include **at least one** of the expected
-      files (citing additional files beyond that doesn't count against it) — `documentId` on
-      those tags is per-ingestion and changes every run, so it's never used for comparison, only
-      `fileName` is. Questions that don't set `expectedCitedFileNames` are excluded from this
-      fraction. If *no* question in a claim sets it, `citationMatch` is `undefined` for that
-      claim (not `0`). `citationMatch` is reported for visibility (in `namedScores` and the PDF)
-      but is not part of the accuracy formula below.
+    - `citationMatch` (LLM-graded, optional per question): a question in `testdata/claims.json`
+      can set an `expectedChunkText` string — a curated golden source passage for that question,
+      copied verbatim from the S3 chunk-grounding file `provider.js` reads (see below). For every
+      question that sets it, `citationMatch` resolves that question's actually-cited
+      `(documentId, chunkId)` pairs against `output.chunkGroundingData` and asks the grader
+      whether **any** resolved chunk's text semantically supports the expected passage (exact
+      wording doesn't matter, meaning does) — one extra grader call per resolved citation, on top
+      of the existing per-question answer-content call. A citation that doesn't resolve (missing
+      grounding data, or that specific chunk absent from it) is skipped rather than counted as a
+      mismatch by itself; if *no* citation resolves at all, the question fails with a fixed reason
+      and no grader call is made. Neither `documentId` nor `chunkId` is ever compared directly —
+      both are per-ingestion and change every run — only the chunk *text* they resolve to is
+      compared. Questions that don't set `expectedChunkText` (or set it to an empty string) are
+      excluded from this fraction. If *no* question in a claim sets it, `citationMatch` is
+      `undefined` for that claim (not `0`). `citationMatch` is reported for visibility (in
+      `namedScores` and the PDF) but is not part of the accuracy formula below.
 
     The assertion also returns a `perQuestionBreakdown` array — one entry per question with its
     `predefinedQuestionId`, `question`, `actualAnswer`, `riskStatus` (the real report's raw value,
     used only for sorting the PDF's question order), `riskStatusMatches` (boolean — whether that
     `riskStatus` equals the gold `expectedRiskStatus` for this specific question), `matches`
-    (boolean), `reason` (the grader's per-question reasoning), `actualCitedFileNames`,
-    `expectedCitedFileNames`, and `citationMatches` (boolean, or `undefined` if that question
-    wasn't graded for citations) — which is what `scripts/generate-pdf-report.js` renders in the
-    question-by-question section of the PDF.
+    (boolean), `reason` (the grader's per-question reasoning), `actualCitedFileNames` (deduplicated
+    fileNames actually cited, for visibility), `citationMatches` (boolean, or `undefined` if that
+    question wasn't graded for citations), and `citationMatchReason` (the citation grader's own
+    reason, or a fixed string when no citation resolved at all) — which is what
+    `scripts/generate-pdf-report.js` renders in the question-by-question section of the PDF.
 
     The assertion's own score is the average of `riskStatusMatch` and `answerContentMatch`, plus
     `citationMatch` as a third term whenever at least one question in the claim was graded for
@@ -73,15 +80,15 @@ document-ingestion + report pipeline and scores each against a human-verified an
   `acc = round(25×answerContentMatch + 25×report_quality + 25×fraudRiskScoreMatch + 25×entityFieldsMatch)`.
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
-- **`provider.js` fetches the text of every document the real report actually cites** (not the
-  whole source bucket, and never based on the gold answer key) and attaches it as
-  `output.citedDocumentsText`, capped at 15,000 characters per document — this is what
-  `report_quality` checks the summary's claims against. If the report cites a filename
-  `provider.js` can't match to a real source document, that citation is skipped rather than
-  failing the run.
+- **`provider.js` fetches the text behind every citation via a separate S3 chunk-grounding file**
+  (not the whole source bucket, and never based on the gold answer key) and attaches it as
+  `output.citedDocumentsText`, capped at 15,000 characters per fileName (concatenating multiple
+  cited chunks from the same file) — this is what `report_quality` checks the summary's claims
+  against. If a citation's `(documentId, chunkId)` isn't found in the grounding file, or the
+  grounding file itself is missing for that claim, it's skipped rather than failing the run.
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
 - **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
-- **Citations are parsed out of free-text answers.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="...">` tags inside each answer's text, not a structured field. `scripts/extract-cited-file-names.js`'s `extractCitedFileNamesFromText` is the one place that regex-extracts `fileName` from these tags — `provider.js`'s `extractCitedFileNames` (to decide which documents to fetch text for `citedDocumentsText`) and `qa-match-assertion.js`'s `citationMatch` (per question) both call it. Only `fileName` is ever compared — `documentId` is assigned per-ingestion and differs on every eval run, so it can't identify a document across runs the way `fileName` can.
+- **Citations are parsed out of free-text answers, then grounded via a separate S3 file.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="..." chunkId="...">` tags inside each answer's text, not a structured field. `scripts/extract-cited-file-names.js`'s `extractCitedCitationsFromText` is the one place that regex-extracts `fileName`, `documentId`, and `chunkId` from these tags. Neither `documentId` nor `chunkId` is stable across eval runs (both are assigned per-ingestion), so neither is ever compared directly — instead, `s3-client.js`'s `fetchChunkGroundingData(bucketId)` reads a separate per-claim JSON file FraudX writes to the `fraudx-qa-claim-processor` S3 bucket (keyed `{bucketId}.json`), which maps each citation's `(documentId, chunkId)` pair to the exact verbatim chunk text GX grounded that citation in. `provider.js` uses this to build `citedDocumentsText` and exposes the raw lookup as `output.chunkGroundingData` so `qa-match-assertion.js`'s `citationMatch` (per question) can reuse it without a second S3 fetch. Reading this bucket requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` in `.env` (see `.env.example`).
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
