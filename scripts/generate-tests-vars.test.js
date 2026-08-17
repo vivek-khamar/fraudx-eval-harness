@@ -60,7 +60,7 @@ test('buildTestsVars maps a flat claim into promptfoo test-case shape', () => {
               question: "Are any of the plaintiff's attorneys included in the list of attorneys bad actors?",
               expectedAnswerSummary: 'Yes.',
               expectedRiskStatus: 'RISK_DETECTED',
-              expectedCitedFileNames: undefined,
+              expectedChunkText: undefined,
             },
           ],
         },
@@ -106,7 +106,7 @@ test('generateTestsVars output file starts with a do-not-edit header', (t) => {
   assert.match(contents, /^# GENERATED FILE/);
 });
 
-test('buildTestsVars passes expectedCitedFileNames through when a question sets it', () => {
+test('buildTestsVars passes expectedChunkText through when a question sets it', () => {
   const claim = sampleClaim({
     questions: [
       {
@@ -114,23 +114,26 @@ test('buildTestsVars passes expectedCitedFileNames through when a question sets 
         question: 'Q?',
         expectedAnswer: 'A.',
         expectedRiskStatus: 'RISK_DETECTED',
-        expectedCitedFileNames: ['source-doc.pdf'],
+        expectedChunkText: 'The curated gold source passage for this question.',
       },
     ],
   });
   const result = buildTestsVars([claim]);
-  assert.deepEqual(result[0].vars.expected.qa[0].expectedCitedFileNames, ['source-doc.pdf']);
+  assert.equal(
+    result[0].vars.expected.qa[0].expectedChunkText,
+    'The curated gold source passage for this question.'
+  );
 });
 
-test('generateTestsVars omits expectedCitedFileNames from the written YAML when a question does not set it', (t) => {
+test('generateTestsVars omits expectedChunkText from the written YAML when a question does not set it', (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-tests-vars-'));
   const claimsPath = path.join(tmpDir, 'claims.json');
   const outputPath = path.join(tmpDir, 'tests.vars.yaml');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
-  fs.writeFileSync(claimsPath, JSON.stringify([sampleClaim()])); // sampleClaim()'s question has no expectedCitedFileNames
+  fs.writeFileSync(claimsPath, JSON.stringify([sampleClaim()])); // sampleClaim()'s question has no expectedChunkText
   generateTestsVars(claimsPath, outputPath);
 
   const written = yaml.load(fs.readFileSync(outputPath, 'utf8'));
-  assert.equal('expectedCitedFileNames' in written[0].vars.expected.qa[0], false);
+  assert.equal('expectedChunkText' in written[0].vars.expected.qa[0], false);
 });
