@@ -192,9 +192,9 @@ test('formatCitationMatch shows (none) when a non-matching question actually cit
   );
 });
 
-test('formatCitationMatch renders Not graded when citationMatches is undefined', () => {
-  assert.equal(formatCitationMatch({ citationMatches: undefined }), 'Not graded');
-  assert.equal(formatCitationMatch({ citationMatches: null }), 'Not graded');
+test('formatCitationMatch renders N/A when citationMatches is undefined', () => {
+  assert.equal(formatCitationMatch({ citationMatches: undefined }), 'N/A');
+  assert.equal(formatCitationMatch({ citationMatches: null }), 'N/A');
 });
 
 test('uniqueFilePath returns the given path unchanged when nothing exists there yet', (t) => {
@@ -339,7 +339,7 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Risk Status: RISK DETECTED/);
   assert.match(text, /Answer: Yes, per doc X\./);
   assert.doesNotMatch(text, /RISK DETECTED: Yes, per doc X\./, 'the risk-status prefix should be stripped from the rendered answer text');
-  assert.match(text, /Citation Match: Not graded/);
+  assert.match(text, /Citation Match: N\/A/);
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);
   assert.match(text, /One Team Restoration, Inc\./);
@@ -513,7 +513,7 @@ test('generatePdfReports logs a console.error mentioning the bucketId of a claim
   );
 });
 
-test('generatePdfReports renders Citation Match as YES, NO (with expected/actual fileNames), and Not graded per question', async (t) => {
+test('generatePdfReports renders Citation Match as YES, NO (with expected/actual fileNames), and N/A per question', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -545,5 +545,5 @@ test('generatePdfReports renders Citation Match as YES, NO (with expected/actual
   // UNGRADED (RISK_NOT_DETECTED) third — so these markers already appear in this order.
   assert.match(text, /MATCHED-QUESTION[\s\S]*?Citation Match: YES/);
   assert.match(text, /MISMATCHED-QUESTION[\s\S]*?Citation Match: NO \(expected one of: a\.pdf, b\.pdf; got: c\.pdf\)/);
-  assert.match(text, /UNGRADED-QUESTION[\s\S]*?Citation Match: Not graded/);
+  assert.match(text, /UNGRADED-QUESTION[\s\S]*?Citation Match: N\/A/);
 });

@@ -37,7 +37,7 @@ function formatRiskStatus(riskStatus) {
 
 function formatCitationMatch(entry) {
   if (entry.citationMatches == null) {
-    return 'Not graded';
+    return 'N/A';
   }
   if (entry.citationMatches) {
     return 'YES';
