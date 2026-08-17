@@ -125,10 +125,16 @@ function extractCitedCitationsFromText(text)
 // null/undefined/no-tags handling as the existing function.
 ```
 
-The existing `extractCitedFileNamesFromText(text)` is **unchanged** — it's
-still used by `qa-match-assertion.js`'s per-question `citationMatch` scoring
-(which only ever needed `fileName`, and stays that way; this design doesn't
-touch citation *scoring*, only how grounding *text* is fetched).
+The existing `extractCitedFileNamesFromText(text)` is **deleted**, along with
+its tests in `scripts/extract-cited-file-names.test.js`. Its only two
+callers — `provider.js`'s `extractCitedFileNames(report)` (removed by this
+same design, see below) and `qa-match-assertion.js`'s fileName-based
+`citationMatch` check (removed by "Chunk-text semantic citation matching"
+below) — are both going away, and `extractCitedCitationsFromText` is a strict
+superset (it returns `fileName` alongside `documentId`/`chunkId`), so keeping
+both functions around would just be redundant, unused-in-production surface
+area. Any caller that only needs the fileName list can map over
+`extractCitedCitationsFromText`'s result (`citations.map((c) => c.fileName)`).
 
 ### `provider.js` changes
 
@@ -182,6 +188,10 @@ if (groundingData) {
   line and its two tests in `provider.test.js` (`extractCitedFileNames
   collects unique, decoded fileNames...`, `extractCitedFileNames returns an
   empty array...`).
+- `output` gains a new field, `chunkGroundingData`, set to the raw
+  `groundingData` map (or `null` if the S3 file was missing) —
+  `qa-match-assertion.js`'s chunk-text semantic match (below) reuses this
+  instead of fetching the same S3 object a second time per claim.
 
 ### Config additions
 
@@ -195,11 +205,14 @@ if (groundingData) {
 
 ## Testing
 
-- `scripts/extract-cited-file-names.test.js`: new tests for
-  `extractCitedCitationsFromText` — multiple citations (dedup by
-  `documentId`+`chunkId` pair, not just `fileName`, since the same file can
-  have multiple distinct cited chunks), URL-decoding of `fileName`, no tags
-  (`[]`), `null`/`undefined`/empty-string input.
+- `scripts/extract-cited-file-names.test.js`: rewritten (not extended) for
+  `extractCitedCitationsFromText`, replacing every `extractCitedFileNamesFromText`
+  test with an equivalent — multiple citations (dedup by `documentId`+`chunkId`
+  pair, not just `fileName`, since two citations of the same file but
+  different chunks must **not** be deduped away — this is a genuine behavior
+  change from the old function), URL-decoding of `fileName`, no tags (`[]`),
+  `null`/`undefined`/empty-string input, reusable-across-calls (no leaked
+  regex state).
 - `s3-client.test.js` (new): mocks the AWS SDK client's `send` method —
   returns a well-formed grounding JSON (verify the returned lookup map's
   keys/values), `NoSuchKey` error (returns `null`), malformed JSON body
@@ -214,9 +227,129 @@ if (groundingData) {
   failing the run; `groundingData === null` (file missing) yields an empty
   `citedDocumentsText`, not a thrown error.
 
+## Chunk-text semantic citation matching (supersedes fileName-based `citationMatch`)
+
+### Goal
+
+The shipped `citationMatch` (2026-08-14 design) only checks that the model
+*cited some file from an expected list* — it can't tell whether the model
+cited the *right passage* within that file, and it can't be more specific
+than file-level because `documentId` (and, it turns out, `chunkId`) aren't
+stable across re-ingestion runs, so an ID-based expected value in
+`claims.json` would never match on a fresh run. Now that per-citation
+grounding text is fetchable (see above), the check can move from "did it cite
+an allowed file" to "does the actually-cited passage semantically match the
+correct passage" — strictly more precise, and it doesn't depend on any ID
+being stable, since both sides of the comparison are compared as text.
+
+### Data model
+
+- `testdata/claims.json` question objects: `expectedCitedFileNames: string[]`
+  is replaced by `expectedChunkText: string` — one curated golden passage
+  per question, authored by running the claim once, finding the chunk that
+  actually should ground that question's answer, and copying its
+  `chunk_text` verbatim (from the same S3 file this design already reads).
+  Optional, same incremental opt-in as today: omitted entirely for questions
+  not (yet) graded for citation content.
+- **Migration**: the 21 of 35 questions in the committed golden claim that
+  already have `expectedCitedFileNames` (added in commit `ad85d5a`) need to be
+  re-authored as `expectedChunkText` — the old fileName lists don't carry
+  enough information to derive the new field automatically. This is real,
+  manual re-authoring work, not a mechanical rename; out of scope for the
+  implementation plan to do for all 21 (matching how `ad85d5a` itself only
+  backfilled a subset, not all 35, when the field was first introduced).
+- `scripts/generate-tests-vars.js`'s `buildTestsVars` passes
+  `expectedChunkText` through unchanged (same pattern as every other optional
+  per-question field), replacing its current `expectedCitedFileNames` line.
+
+### `scripts/qa-match-assertion.js` changes
+
+- The current fileName-based block (`actualCitedFileNames = extractCitedFileNamesFromText(actualAnswer); citationMatches = ...some(f => expectedCitedFileNames.includes(f))`)
+  is deleted.
+- New logic per question, only when `q.expectedChunkText` is set:
+  1. `const citations = extractCitedCitationsFromText(actualAnswer);` — this
+     question's own citations only, not the whole report.
+  2. For each citation, look up `output.chunkGroundingData?.get(`${documentId}:${chunkId}`)`.
+     Citations that don't resolve (missing grounding data entirely, or that
+     specific chunk not in the map) are skipped, same "just skip" policy as
+     the fetch-side design above.
+  3. For each resolved chunk text, call the grader provider (the same
+     `provider` already loaded once via `promptfoo.loadApiProvider` earlier
+     in this function) with a new prompt:
+     ```
+     Expected source passage: {expectedChunkText}
+     Actual cited passage: {chunkText}
+
+     Does the actual cited passage semantically support/match the expected
+     source passage above (exact wording does not matter, meaning does)?
+     Respond with only a JSON object, no other text:
+     {"matches": boolean, "reason": string}.
+     ```
+     Reuses the existing `parseGraderVerdict` unchanged (same `{matches,
+     reason}` shape as the answer-content grader call).
+  4. `citationMatches = true` if **any** resolved chunk's grader call returns
+     `matches: true` — same "at least one" semantics the old fileName check
+     used. `reason` on the entry is the reason from whichever call decided
+     the outcome (first `true` if any passed; the last-checked `false`'s
+     reason otherwise). If **no citation resolved at all** (none extracted,
+     or none found in `chunkGroundingData`), `citationMatches = false` with
+     no grader call made, and `reason` is a fixed string, e.g. `"No cited
+     chunk resolved to compare against the expected passage."` — there is
+     nothing to show a grader's opinion on, but the field must still be a
+     string per this same file's own `parseGraderVerdict`-shaped conventions.
+- `q.expectedChunkText` absent → `citationMatches: undefined`, unchanged
+  "not graded" behavior.
+- `perQuestionBreakdown` entries: `actualCitedFileNames` (still populated,
+  still useful for visibility) stays; nothing about `namedScores.citationMatch`,
+  the assertion's own `score`, or `computeAccuracy` in `score-dashboard.js`
+  changes shape — they only ever consumed `citationMatches`/`citationMatch`
+  as a boolean/number-or-undefined, so this is a swap of *how* that value is
+  computed, not what shape it has downstream.
+- **Cost/latency note**: this adds one extra grader-provider LLM call per
+  question that has `expectedChunkText` set (on top of the existing
+  riskStatus/answerContent call already made per question) — worth watching
+  on the next real run, though the bulk of eval wall-clock time is FraudX's
+  own ingestion/processing, not grading.
+
+### `scripts/generate-pdf-report.js` changes
+
+`formatCitationMatch`'s `NO` case currently renders
+`(expected one of: a.pdf, b.pdf; got: c.pdf)` — a filename diff that no
+longer makes sense once the check is content-based. It's replaced with the
+grader's `reason` (same rendering pattern already used for the per-question
+`Reason:` line elsewhere in this file): `Citation Match: NO ({reason})`. The
+`YES` and `N/A` (`citationMatches == null`) cases are unchanged.
+
+### Testing
+
+- `scripts/qa-match-assertion.test.js`: replace the existing fileName-based
+  `citationMatch` tests with: a question whose actual answer cites a chunk
+  that resolves via `chunkGroundingData` and the grader says matches (pass);
+  cites a chunk that resolves but the grader says it doesn't match (fail,
+  with `reason` populated); cites multiple chunks where only one matches
+  (still passes — "at least one"); a citation whose `(documentId, chunkId)`
+  isn't in `chunkGroundingData` (skipped, doesn't crash); `chunkGroundingData`
+  is `null` (all citations skipped, `citationMatches: false` since zero
+  matched, not `undefined` — only *absence of `expectedChunkText`* makes it
+  `undefined`); no `expectedChunkText` on the question (excluded from the
+  fraction, as today).
+- `scripts/generate-tests-vars.test.js`: `expectedChunkText` passes through
+  when present, absent from generated YAML when the source claim omits it
+  (replacing the equivalent existing `expectedCitedFileNames` tests).
+- `scripts/generate-pdf-report.test.js`: `NO` case renders the grader reason,
+  not a filename list; `YES`/`N/A` cases unchanged from today's tests.
+- `provider.test.js`: new assertion that `output.chunkGroundingData` is the
+  raw map returned by `s3Client.fetchChunkGroundingData` (or `null`), so
+  `qa-match-assertion.js` can be tested independently of a real S3 call.
+
 ## Documentation
 
-Update the README's citation section (the paragraph starting "Citations are
-parsed out of free-text answers...") to describe the S3 chunk-grounding
-lookup replacing whole-PDF download for `citedDocumentsText`, and note the
-three new required env vars alongside the existing `.env.example` walkthrough.
+- Update the README's citation section (the paragraph starting "Citations
+  are parsed out of free-text answers...") to describe the S3 chunk-grounding
+  lookup replacing whole-PDF download for `citedDocumentsText`, and note the
+  three new required env vars alongside the existing `.env.example`
+  walkthrough.
+- Update the README's `citationMatch` description (added by the 2026-08-14
+  design) to describe the new chunk-text semantic check, the
+  `expectedChunkText` field replacing `expectedCitedFileNames`, and the extra
+  grader-provider call this adds per graded question.
