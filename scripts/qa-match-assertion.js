@@ -1,7 +1,7 @@
 'use strict';
 
 const promptfoo = require('promptfoo');
-const { extractCitedFileNamesFromText } = require('./extract-cited-file-names');
+const { extractCitedCitationsFromText } = require('./extract-cited-file-names');
 
 function computeRiskStatusMatch(output, expectedQa) {
   const actualQuestions = output.report.questions;
@@ -24,6 +24,17 @@ function buildQuestionGradingPrompt(question, actualAnswer) {
   ].join('\n');
 }
 
+function buildChunkTextMatchPrompt(expectedChunkText, actualChunkText) {
+  return [
+    `Expected source passage: ${expectedChunkText}`,
+    `Actual cited passage: ${actualChunkText}`,
+    '',
+    'Does the actual cited passage semantically support/match the expected source passage above',
+    '(exact wording does not matter, meaning does)? Respond with only a JSON object, no other text:',
+    '{"matches": boolean, "reason": string}.',
+  ].join('\n');
+}
+
 function parseGraderVerdict(responseOutput) {
   const text = typeof responseOutput === 'string' ? responseOutput : JSON.stringify(responseOutput);
   const match = text.match(/\{[\s\S]*\}/);
@@ -35,6 +46,42 @@ function parseGraderVerdict(responseOutput) {
     throw new Error(`Grader response JSON missing matches/reason fields: ${text}`);
   }
   return { matches: parsed.matches, reason: parsed.reason };
+}
+
+const NO_CITATION_RESOLVED_REASON = 'No cited chunk resolved to compare against the expected passage.';
+
+// Resolves every citation in this one question's actual answer against
+// chunkGroundingData, and asks the grader whether ANY resolved chunk's text
+// semantically supports expectedChunkText — "at least one" semantics, same
+// as the fileName-based check this replaces. A citation that doesn't resolve
+// (missing grounding data entirely, or that specific chunk absent from it)
+// is skipped, not treated as a mismatch by itself. If NO citation resolves
+// at all, this returns false with a fixed reason and makes no grader call.
+async function computeChunkTextMatch(provider, expectedChunkText, actualAnswer, chunkGroundingData) {
+  const citations = extractCitedCitationsFromText(actualAnswer);
+  let sawAnyResolved = false;
+  let lastFalseReason = NO_CITATION_RESOLVED_REASON;
+  for (const { documentId, chunkId } of citations) {
+    const chunkText = chunkGroundingData ? chunkGroundingData.get(`${documentId}:${chunkId}`) : undefined;
+    if (!chunkText) {
+      continue;
+    }
+    sawAnyResolved = true;
+    const prompt = buildChunkTextMatchPrompt(expectedChunkText, chunkText);
+    const response = await provider.callApi(prompt);
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    const { matches, reason } = parseGraderVerdict(response.output);
+    if (matches) {
+      return { citationMatches: true, citationMatchReason: reason };
+    }
+    lastFalseReason = reason;
+  }
+  return {
+    citationMatches: false,
+    citationMatchReason: sawAnyResolved ? lastFalseReason : NO_CITATION_RESOLVED_REASON,
+  };
 }
 
 async function qaMatchAssertion(output, context) {
@@ -57,11 +104,15 @@ async function qaMatchAssertion(output, context) {
     const riskStatus = actual && actual.riskStatus;
     const riskStatusMatches = riskStatus === q.expectedRiskStatus;
 
-    const actualCitedFileNames = extractCitedFileNamesFromText(actualAnswer);
-    const expectedCitedFileNames = q.expectedCitedFileNames;
-    const citationMatches = Array.isArray(expectedCitedFileNames) && expectedCitedFileNames.length > 0
-      ? actualCitedFileNames.some((f) => expectedCitedFileNames.includes(f))
-      : undefined;
+    const actualCitedFileNames = [...new Set(extractCitedCitationsFromText(actualAnswer).map((c) => c.fileName))];
+
+    let citationMatches;
+    let citationMatchReason;
+    if (typeof q.expectedChunkText === 'string' && q.expectedChunkText.length > 0) {
+      const chunkResult = await computeChunkTextMatch(provider, q.expectedChunkText, actualAnswer, output.chunkGroundingData);
+      citationMatches = chunkResult.citationMatches;
+      citationMatchReason = chunkResult.citationMatchReason;
+    }
 
     perQuestionBreakdown.push({
       predefinedQuestionId: q.predefinedQuestionId,
@@ -72,8 +123,8 @@ async function qaMatchAssertion(output, context) {
       matches,
       reason,
       actualCitedFileNames,
-      expectedCitedFileNames,
       citationMatches,
+      citationMatchReason,
     });
   }
   const answerContentMatch = perQuestionBreakdown.filter((v) => v.matches).length / perQuestionBreakdown.length;
@@ -107,4 +158,5 @@ async function qaMatchAssertion(output, context) {
 module.exports = qaMatchAssertion;
 module.exports.computeRiskStatusMatch = computeRiskStatusMatch;
 module.exports.buildQuestionGradingPrompt = buildQuestionGradingPrompt;
+module.exports.buildChunkTextMatchPrompt = buildChunkTextMatchPrompt;
 module.exports.parseGraderVerdict = parseGraderVerdict;

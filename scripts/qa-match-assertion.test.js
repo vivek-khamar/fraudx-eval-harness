@@ -128,8 +128,8 @@ test('qaMatchAssertion returns one perQuestionBreakdown entry per question', asy
     matches: true,
     reason: 'looks right',
     actualCitedFileNames: [],
-    expectedCitedFileNames: undefined,
     citationMatches: undefined,
+    citationMatchReason: undefined,
   });
 });
 
@@ -189,14 +189,14 @@ test('qaMatchAssertion propagates a parse error when the grader response has no 
   await assert.rejects(() => qaMatchAssertion(fakeOutput(), fakeContext()), /Could not find a JSON object/);
 });
 
-function fakeContextWithCitations() {
+function fakeContextWithExpectedChunkText() {
   return {
     vars: {
       expected: {
         qa: [
-          { predefinedQuestionId: 1, question: 'Q1?', expectedAnswerSummary: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedCitedFileNames: ['a.pdf', 'b.pdf'] },
-          { predefinedQuestionId: 2, question: 'Q2?', expectedAnswerSummary: 'A2', expectedRiskStatus: 'UNSURE', expectedCitedFileNames: ['c.pdf'] },
-          { predefinedQuestionId: 3, question: 'Q3?', expectedAnswerSummary: 'A3', expectedRiskStatus: 'RISK_DETECTED' }, // no expectedCitedFileNames — not graded for citations
+          { predefinedQuestionId: 1, question: 'Q1?', expectedAnswerSummary: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedChunkText: 'The gold passage about attorney X.' },
+          { predefinedQuestionId: 2, question: 'Q2?', expectedAnswerSummary: 'A2', expectedRiskStatus: 'UNSURE', expectedChunkText: 'The gold passage about provider Y.' },
+          { predefinedQuestionId: 3, question: 'Q3?', expectedAnswerSummary: 'A3', expectedRiskStatus: 'RISK_DETECTED' }, // no expectedChunkText — not graded for citations
         ],
       },
     },
@@ -208,38 +208,124 @@ function fakeOutputWithCitations() {
   return {
     report: {
       questions: [
-        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="b.pdf"></InTextCitation>' }, // cites b.pdf — one of the two expected — matches
-        { predefinedQuestionId: 2, riskStatus: 'UNSURE', answer: 'see <InTextCitation fileName="wrong.pdf"></InTextCitation>' }, // expected c.pdf, cited wrong.pdf — no match
-        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="anything.pdf"></InTextCitation>' }, // no expectedCitedFileNames — excluded
+        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
+        { predefinedQuestionId: 2, riskStatus: 'UNSURE', answer: 'see <InTextCitation fileName="b.pdf" documentId="doc-2" chunkId="chunk-2"></InTextCitation>' },
+        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="c.pdf" documentId="doc-3" chunkId="chunk-3"></InTextCitation>' }, // no expectedChunkText — excluded
       ],
     },
+    chunkGroundingData: new Map([
+      ['doc-1:chunk-1', 'The actual chunk text for attorney X, matching the gold passage.'],
+      ['doc-2:chunk-2', 'A completely unrelated chunk about something else.'],
+      ['doc-3:chunk-3', 'Text for question 3, irrelevant since ungraded.'],
+    ]),
   };
 }
 
-test('qaMatchAssertion computes citationMatch as the fraction of graded questions citing at least one expected fileName', async (t) => {
-  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+// Distinguishes the per-question answer-content grading call (buildQuestionGradingPrompt)
+// from the new chunk-text semantic-match call (buildChunkTextMatchPrompt) by prompt
+// content, so a single mock can serve both call sites with different canned verdicts.
+function isChunkTextMatchPrompt(prompt) {
+  return prompt.includes('Expected source passage:');
+}
 
-  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithCitations());
+test('qaMatchAssertion computes citationMatch via chunk-text semantic match using output.chunkGroundingData', async (t) => {
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      const matches = prompt.includes('attorney X');
+      return { output: JSON.stringify({ matches, reason: matches ? 'Chunk supports the passage' : 'Chunk is unrelated' }) };
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'answer content ok' }) };
+  });
 
-  // question 1: matched; question 2: not matched; question 3: excluded (ungraded) -> 1/2 graded.
-  assert.equal(result.namedScores.citationMatch, 0.5);
+  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithExpectedChunkText());
+
   assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
+  assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'Chunk supports the passage');
   assert.equal(result.perQuestionBreakdown[1].citationMatches, false);
+  assert.equal(result.perQuestionBreakdown[1].citationMatchReason, 'Chunk is unrelated');
   assert.equal(result.perQuestionBreakdown[2].citationMatches, undefined);
-  assert.deepEqual(result.perQuestionBreakdown[0].actualCitedFileNames, ['b.pdf']);
+  assert.equal(result.namedScores.citationMatch, 0.5); // 1 of 2 graded questions matched
 });
 
-test('qaMatchAssertion treats citing any one of several expectedCitedFileNames as a match, not requiring all of them', async (t) => {
-  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+test('qaMatchAssertion treats citing any one of multiple chunks as a match, not requiring all of them', async (t) => {
+  let chunkCallCount = 0;
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      chunkCallCount += 1;
+      const matches = chunkCallCount === 2; // first cited chunk fails, second matches
+      return { output: JSON.stringify({ matches, reason: matches ? 'second chunk matches' : 'first chunk does not match' }) };
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'ok' }) };
+  });
 
-  // question 1's expectedCitedFileNames is ['a.pdf', 'b.pdf'] but the actual answer only cites
-  // b.pdf — this must still count as a match ("at least one", not "all of them").
-  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithCitations());
+  const output = fakeOutputWithCitations();
+  output.report.questions[0].answer = [
+    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+  ].join(' ');
+  output.chunkGroundingData.set('doc-1:chunk-1', 'first chunk text');
+  output.chunkGroundingData.set('doc-1:chunk-2', 'second chunk text');
 
+  // This test isolates question 1's multi-citation "at least one" behavior. Question 2 is
+  // also graded for citations by default (fakeContextWithExpectedChunkText) and its citation
+  // always resolves (fakeOutputWithCitations), which would add an uncounted grader call and
+  // break the chunkCallCount assertion below — so it's excluded from citation grading here.
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[1].expectedChunkText = undefined;
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(chunkCallCount, 2, 'must check both cited chunks before concluding a match');
   assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
+  assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'second chunk matches');
 });
 
-test('qaMatchAssertion sets namedScores.citationMatch to undefined when no question has expectedCitedFileNames', async (t) => {
+test('qaMatchAssertion skips a citation whose (documentId, chunkId) is not in chunkGroundingData, without crashing', async (t) => {
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      throw new Error('grader must not be called for a citation that never resolved');
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  output.report.questions[0].answer = 'see <InTextCitation fileName="missing.pdf" documentId="doc-x" chunkId="chunk-x"></InTextCitation>';
+  // doc-x:chunk-x is deliberately absent from chunkGroundingData
+
+  // This test isolates question 1's unresolved-citation behavior. Question 2 is also graded
+  // for citations by default (fakeContextWithExpectedChunkText) and its citation always
+  // resolves (fakeOutputWithCitations), which would trigger the "must not be called" mock —
+  // so it's excluded from citation grading here.
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[1].expectedChunkText = undefined;
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
+  assert.equal(
+    result.perQuestionBreakdown[0].citationMatchReason,
+    'No cited chunk resolved to compare against the expected passage.'
+  );
+});
+
+test('qaMatchAssertion treats a null chunkGroundingData (missing S3 file) as every citation unresolved', async (t) => {
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      throw new Error('grader must not be called when chunkGroundingData is null');
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  output.chunkGroundingData = null;
+
+  const result = await qaMatchAssertion(output, fakeContextWithExpectedChunkText());
+
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
+  assert.equal(result.perQuestionBreakdown[1].citationMatches, false);
+});
+
+test('qaMatchAssertion sets namedScores.citationMatch to undefined when no question has expectedChunkText', async (t) => {
   mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
 
   const result = await qaMatchAssertion(fakeOutput(), fakeContext());
@@ -254,17 +340,17 @@ test('qaMatchAssertion sets namedScores.citationMatch to undefined when no quest
 test('qaMatchAssertion folds citationMatch into its own score as a 3-way average when at least one question is graded for it', async (t) => {
   mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
 
-  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithCitations());
+  const result = await qaMatchAssertion(fakeOutputWithCitations(), fakeContextWithExpectedChunkText());
 
   const { riskStatusMatch, answerContentMatch, citationMatch } = result.namedScores;
   assert.equal(result.score, (riskStatusMatch + answerContentMatch + citationMatch) / 3);
 });
 
-test('qaMatchAssertion treats a question with expectedCitedFileNames as an empty array as NOT graded for citations', async (t) => {
+test('qaMatchAssertion treats an empty-string expectedChunkText as NOT graded for citations', async (t) => {
   mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
 
   const context = fakeContext();
-  context.vars.expected.qa[0].expectedCitedFileNames = [];
+  context.vars.expected.qa[0].expectedChunkText = '';
 
   const result = await qaMatchAssertion(fakeOutput(), context);
 
@@ -272,7 +358,7 @@ test('qaMatchAssertion treats a question with expectedCitedFileNames as an empty
   assert.equal('citationMatch' in result.namedScores, false);
 });
 
-test('qaMatchAssertion correctly reads expectedCitedFileNames when vars are built by the real generate-tests-vars.js pipeline, not hand-authored', async (t) => {
+test('qaMatchAssertion correctly reads expectedChunkText when vars are built by the real generate-tests-vars.js pipeline, not hand-authored', async (t) => {
   const { buildTestsVars } = require('./generate-tests-vars');
   mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
 
@@ -285,7 +371,7 @@ test('qaMatchAssertion correctly reads expectedCitedFileNames when vars are buil
     expectedInsuranceFirm: 'Z',
     summary: 'S',
     questions: [
-      { id: 1, question: 'Q1?', expectedAnswer: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedCitedFileNames: ['a.pdf'] },
+      { id: 1, question: 'Q1?', expectedAnswer: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedChunkText: 'gold passage text' },
     ],
   };
   const [{ vars }] = buildTestsVars([rawClaim]);
@@ -293,9 +379,10 @@ test('qaMatchAssertion correctly reads expectedCitedFileNames when vars are buil
   const output = {
     report: {
       questions: [
-        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf"></InTextCitation>' },
+        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
       ],
     },
+    chunkGroundingData: new Map([['doc-1:chunk-1', 'matching text']]),
   };
 
   const result = await qaMatchAssertion(output, context);
