@@ -337,6 +337,36 @@ test('callApi exposes the raw chunk-grounding lookup as output.chunkGroundingDat
   assert.equal(result.output.chunkGroundingData, groundingMap);
 });
 
+test('callApi skips the S3 lookup entirely when SKIP_S3_GROUNDING=true', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  process.env.SKIP_S3_GROUNDING = 'true';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+    delete process.env.SKIP_S3_GROUNDING;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    fetchReport: async () => ({
+      reportId: 'report-1',
+      summary: 's',
+      bucketId: 32023,
+      questions: [{
+        predefinedQuestionId: 1,
+        answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+      }],
+    }),
+  });
+  mockS3Client(t, async () => {
+    throw new Error('fetchChunkGroundingData must not be called when SKIP_S3_GROUNDING=true');
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.chunkGroundingData, null);
+  assert.deepEqual(result.output.citedDocumentsText, {});
+});
+
 test('callApi exposes output.chunkGroundingData as null when the grounding file is missing', async (t) => {
   process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {

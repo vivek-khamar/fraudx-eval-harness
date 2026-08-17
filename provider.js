@@ -69,7 +69,14 @@ class FraudXClaimProvider {
     const report = await fraudxClient.fetchReport(base, bucket.latestReportId, auth, timeoutMs);
 
     const citations = report.questions.flatMap((q) => extractCitedCitationsFromText(q.answer));
-    const chunkGroundingData = await s3Client.fetchChunkGroundingData(report.bucketId, timeoutMs);
+    // SKIP_S3_GROUNDING=true is the local-dry-run escape hatch (npm run mock-server): the mock
+    // server has no real S3-backed grounding data for its fake bucketId, and this flow needs no
+    // AWS credentials at all. Skipping lands on exactly the same state as a missing grounding
+    // file — chunkGroundingData null, citedDocumentsText {} — never set it in CI/production.
+    const skipS3Grounding = process.env.SKIP_S3_GROUNDING === 'true';
+    const chunkGroundingData = skipS3Grounding
+      ? null
+      : await s3Client.fetchChunkGroundingData(report.bucketId, timeoutMs);
     const citedDocumentsText = {};
     if (chunkGroundingData) {
       const chunksByFileName = new Map();

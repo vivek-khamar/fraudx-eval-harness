@@ -128,12 +128,16 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({
         response: {
           reportId: 'mock-report-id',
+          bucketId: 99999,
           summary: 'Mock claim summary for local dry runs.',
           questions: [
             {
               predefinedQuestionId: 1,
               question: 'Mock question?',
-              answer: 'Mock answer. <InTextCitation fileName="mock.pdf"></InTextCitation>',
+              // documentId/chunkId are required attributes — extractCitedCitationsFromText skips
+              // any citation tag missing one, since it can't be resolved against the S3
+              // chunk-grounding file. Real reports always emit all three.
+              answer: 'Mock answer. <InTextCitation fileName="mock.pdf" documentId="mock-doc-1" chunkId="mock-chunk-1"></InTextCitation>',
               riskStatus: 'UNSURE',
             },
           ],

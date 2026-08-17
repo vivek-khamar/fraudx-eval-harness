@@ -205,8 +205,15 @@ whole pipeline run end to end:
 npm run mock-server                        # terminal 1 — leave running
 FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock \
   CLAIM_NAME=mock-claim INGESTION_MODEL_NAME=mock-ingestion-model PROCESSING_MODEL_NAME=mock-processing-model \
+  SKIP_S3_GROUNDING=true \
   npm run eval   # terminal 2
 ```
+
+`SKIP_S3_GROUNDING=true` is required for this flow: the mock server hands back a fake `bucketId`
+that has no real S3 chunk-grounding file behind it, so `provider.js` skips the S3 lookup entirely
+(`chunkGroundingData` is `null`, `citedDocumentsText` is `{}`, and `citationMatch` reports "no
+citation resolved" for every question) and no AWS credentials are needed.
+Never set it in CI or against the real platform — it silently empties the grounding-based signals.
 
 ## CI
 
