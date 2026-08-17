@@ -120,8 +120,10 @@ document-ingestion + report pipeline and scores each against a human-verified an
 
 ```bash
 npm install
-cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, and CLAIM_NAME/
-                        # INGESTION_MODEL_NAME/PROCESSING_MODEL_NAME (see .env.example)
+cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, CLAIM_NAME/
+                        # INGESTION_MODEL_NAME/PROCESSING_MODEL_NAME, and
+                        # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION (needed to read the
+                        # S3 chunk-grounding file — see .env.example)
 ```
 
 ## Running against the real FraudX platform
@@ -139,7 +141,11 @@ npm run eval
   `testdata/claims.json` deliberately ships with no default for these three fields (a
   claim name can't be reused on the real platform, and the model choice is a per-run
   decision, not a fixed answer-key fact), so the eval fails fast with a clear error if
-  any of the three env vars is unset.
+  any of the three env vars is unset. The same check also requires `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` (which `s3-client.js` needs to read the
+  chunk-grounding file), naming every missing variable in one error — so a run can't get
+  hours into ingestion before discovering it can't reach S3. Setting
+  `SKIP_S3_GROUNDING=true` skips that part of the check, since it skips the S3 lookup itself.
 - `npm run eval` runs `npm run eval:raw` (which runs `promptfoo eval` against
   `FRAUDX_ENDPOINT_URI`, grades the result, and writes `results.json`) and then
   `npm run score`. `--no-cache` is required — promptfoo caches provider responses
@@ -212,7 +218,8 @@ FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FR
 `SKIP_S3_GROUNDING=true` is required for this flow: the mock server hands back a fake `bucketId`
 that has no real S3 chunk-grounding file behind it, so `provider.js` skips the S3 lookup entirely
 (`chunkGroundingData` is `null`, `citedDocumentsText` is `{}`, and `citationMatch` reports "no
-citation resolved" for every question) and no AWS credentials are needed.
+citation resolved" for every question) and no AWS credentials are needed — it also relaxes the
+`preeval` step's fail-fast check for `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`.
 Never set it in CI or against the real platform — it silently empties the grounding-based signals.
 
 ## CI
@@ -233,8 +240,9 @@ Dispatching it prompts for a `mode`:
   limits, so overlapping real evals would contend with each other.
 
   `full-eval` requires these repo (or environment) secrets: `FRAUDX_ENDPOINT_URI`,
-  `FRAUDX_LOGIN_EMAIL`, `FRAUDX_LOGIN_PASSWORD`, `GRADER_PROVIDER`, and whichever of
-  `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` matches `GRADER_PROVIDER`'s value (both are passed
+  `FRAUDX_LOGIN_EMAIL`, `FRAUDX_LOGIN_PASSWORD`, `GRADER_PROVIDER`, `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (for reading the S3 chunk-grounding file), and whichever
+  of `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` matches `GRADER_PROVIDER`'s value (both are passed
   through; an unused one is simply ignored).
 
   Dispatching `full-eval` also requires three inputs — `newClaimName`, `ingestionModelName`,

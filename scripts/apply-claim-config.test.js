@@ -58,7 +58,15 @@ test('applyClaimConfig throws naming every missing env var, without calling logi
   const { tmpDir, claimsPath, originalContent } = makeTmpClaimsFile();
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
-  withEnv(t, { CLAIM_NAME: undefined, INGESTION_MODEL_NAME: undefined, PROCESSING_MODEL_NAME: undefined });
+  withEnv(t, {
+    CLAIM_NAME: undefined,
+    INGESTION_MODEL_NAME: undefined,
+    PROCESSING_MODEL_NAME: undefined,
+    AWS_ACCESS_KEY_ID: 'AKIAFAKE',
+    AWS_SECRET_ACCESS_KEY: 'fake-secret',
+    AWS_REGION: 'us-east-1',
+    SKIP_S3_GROUNDING: undefined,
+  });
   let loginCalled = false;
   mockFraudxClient(t, { login: async () => { loginCalled = true; return { token: 't', orgId: 1, userId: 68 }; } });
 
@@ -74,7 +82,15 @@ test('applyClaimConfig throws naming only the missing env var when just one is u
   const { tmpDir, claimsPath, originalContent } = makeTmpClaimsFile();
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
-  withEnv(t, { CLAIM_NAME: 'my-test-claim', INGESTION_MODEL_NAME: 'openai-gpt-5.4', PROCESSING_MODEL_NAME: undefined });
+  withEnv(t, {
+    CLAIM_NAME: 'my-test-claim',
+    INGESTION_MODEL_NAME: 'openai-gpt-5.4',
+    PROCESSING_MODEL_NAME: undefined,
+    AWS_ACCESS_KEY_ID: 'AKIAFAKE',
+    AWS_SECRET_ACCESS_KEY: 'fake-secret',
+    AWS_REGION: 'us-east-1',
+    SKIP_S3_GROUNDING: undefined,
+  });
   let loginCalled = false;
   mockFraudxClient(t, { login: async () => { loginCalled = true; return { token: 't', orgId: 1, userId: 68 }; } });
 
@@ -86,6 +102,59 @@ test('applyClaimConfig throws naming only the missing env var when just one is u
   assert.equal(fs.readFileSync(claimsPath, 'utf8'), originalContent);
 });
 
+test('applyClaimConfig throws naming the missing AWS env vars, without calling login', async (t) => {
+  const { tmpDir, claimsPath, originalContent } = makeTmpClaimsFile();
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  withEnv(t, {
+    CLAIM_NAME: 'my-test-claim',
+    INGESTION_MODEL_NAME: 'openai-gpt-5.4',
+    PROCESSING_MODEL_NAME: 'openai-gpt-4o',
+    AWS_ACCESS_KEY_ID: undefined,
+    AWS_SECRET_ACCESS_KEY: undefined,
+    AWS_REGION: undefined,
+    SKIP_S3_GROUNDING: undefined,
+  });
+  let loginCalled = false;
+  mockFraudxClient(t, { login: async () => { loginCalled = true; return { token: 't', orgId: 1, userId: 68 }; } });
+
+  await assert.rejects(
+    () => applyClaimConfig(claimsPath),
+    /Missing required claim config env var\(s\): AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION/
+  );
+  assert.equal(loginCalled, false);
+  assert.equal(fs.readFileSync(claimsPath, 'utf8'), originalContent);
+});
+
+test('applyClaimConfig does not require the AWS env vars when SKIP_S3_GROUNDING=true', async (t) => {
+  const { tmpDir, claimsPath } = makeTmpClaimsFile();
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  withEnv(t, {
+    CLAIM_NAME: 'my-test-claim',
+    INGESTION_MODEL_NAME: 'openai-gpt-5.4',
+    PROCESSING_MODEL_NAME: 'openai-gpt-4o',
+    FRAUDX_ENDPOINT_URI: 'https://fake.fraudx.test',
+    AWS_ACCESS_KEY_ID: undefined,
+    AWS_SECRET_ACCESS_KEY: undefined,
+    AWS_REGION: undefined,
+    SKIP_S3_GROUNDING: 'true',
+  });
+  mockFraudxClient(t, {
+    login: async () => ({ token: 't', orgId: 1, userId: 68 }),
+    searchModels: async (base, auth, typeName) => (
+      typeName === 'INGESTION'
+        ? [{ id: 1145, name: 'gpt-5.4', displayName: 'openai-gpt-5.4' }]
+        : [{ id: 6, name: 'gpt-4o', displayName: 'openai-gpt-4o' }]
+    ),
+  });
+
+  await applyClaimConfig(claimsPath);
+
+  const written = JSON.parse(fs.readFileSync(claimsPath, 'utf8'));
+  assert.equal(written[0].newClaimName, 'my-test-claim');
+});
+
 test('applyClaimConfig resolves both model names and writes claimName/ingestionModelId/processingModelId to every claim', async (t) => {
   const { tmpDir, claimsPath } = makeTmpClaimsFile();
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -95,6 +164,10 @@ test('applyClaimConfig resolves both model names and writes claimName/ingestionM
     INGESTION_MODEL_NAME: 'openai-gpt-5.4',
     PROCESSING_MODEL_NAME: 'openai-gpt-4o',
     FRAUDX_ENDPOINT_URI: 'https://fake.fraudx.test',
+    AWS_ACCESS_KEY_ID: 'AKIAFAKE',
+    AWS_SECRET_ACCESS_KEY: 'fake-secret',
+    AWS_REGION: 'us-east-1',
+    SKIP_S3_GROUNDING: undefined,
   });
   let loginCalls = 0;
   mockFraudxClient(t, {
@@ -125,6 +198,10 @@ test('applyClaimConfig propagates a clear error when a displayName does not reso
     INGESTION_MODEL_NAME: 'nonexistent-model',
     PROCESSING_MODEL_NAME: 'openai-gpt-4o',
     FRAUDX_ENDPOINT_URI: 'https://fake.fraudx.test',
+    AWS_ACCESS_KEY_ID: 'AKIAFAKE',
+    AWS_SECRET_ACCESS_KEY: 'fake-secret',
+    AWS_REGION: 'us-east-1',
+    SKIP_S3_GROUNDING: undefined,
   });
   mockFraudxClient(t, {
     login: async () => ({ token: 't', orgId: 1, userId: 68 }),

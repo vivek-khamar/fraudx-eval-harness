@@ -22,6 +22,15 @@ async function applyClaimConfig(claimsPath) {
   if (!claimName) missing.push('CLAIM_NAME');
   if (!ingestionModelName) missing.push('INGESTION_MODEL_NAME');
   if (!processingModelName) missing.push('PROCESSING_MODEL_NAME');
+  // provider.js reads the S3 chunk-grounding file with these, but only discovers they're
+  // missing hours into a run — after ingestion and claim processing have already happened.
+  // Checked here instead, before any real work starts. SKIP_S3_GROUNDING=true skips the S3
+  // lookup entirely (local dry runs against the mock server), so they're genuinely unneeded then.
+  if (process.env.SKIP_S3_GROUNDING !== 'true') {
+    if (!process.env.AWS_ACCESS_KEY_ID) missing.push('AWS_ACCESS_KEY_ID');
+    if (!process.env.AWS_SECRET_ACCESS_KEY) missing.push('AWS_SECRET_ACCESS_KEY');
+    if (!process.env.AWS_REGION) missing.push('AWS_REGION');
+  }
   if (missing.length > 0) {
     throw new Error(`Missing required claim config env var(s): ${missing.join(', ')}`);
   }
