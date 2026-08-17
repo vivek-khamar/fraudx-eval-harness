@@ -124,12 +124,26 @@ test('qaMatchAssertion returns one perQuestionBreakdown entry per question', asy
     question: 'Q1?',
     actualAnswer: 'ans1',
     riskStatus: 'RISK_DETECTED',
+    riskStatusMatches: true,
     matches: true,
     reason: 'looks right',
     actualCitedFileNames: [],
     expectedCitedFileNames: undefined,
     citationMatches: undefined,
   });
+});
+
+test('qaMatchAssertion sets riskStatusMatches false per-question when the actual riskStatus differs from expected', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'looks right' }) }));
+
+  const result = await qaMatchAssertion(fakeOutput(), fakeContext());
+
+  // Question 2 expects UNSURE but fakeOutput reports RISK_DETECTED — a mismatch.
+  assert.equal(result.perQuestionBreakdown[1].riskStatusMatches, false);
+  assert.equal(result.perQuestionBreakdown[1].riskStatus, 'RISK_DETECTED');
+  // Questions 1 and 3 both expect and get RISK_DETECTED — a match.
+  assert.equal(result.perQuestionBreakdown[0].riskStatusMatches, true);
+  assert.equal(result.perQuestionBreakdown[2].riskStatusMatches, true);
 });
 
 test('qaMatchAssertion grades a missing actual answer as NO ANSWER PROVIDED', async (t) => {

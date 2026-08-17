@@ -11,8 +11,6 @@ const {
   formatTimestampForFilename,
   formatLocalTimestamp,
   humanizeFieldName,
-  formatRiskStatus,
-  stripRiskStatusPrefix,
   sortByRiskStatus,
   uniqueFilePath,
   formatCitationMatch,
@@ -62,7 +60,7 @@ function sampleResultsFile() {
               {
                 assertion: { metric: 'qa_match' },
                 perQuestionBreakdown: [
-                  { predefinedQuestionId: 1, question: 'Is there fraud?', actualAnswer: 'RISK DETECTED: Yes, per doc X.', riskStatus: 'RISK_DETECTED', matches: true, reason: 'Matches expected reasoning' },
+                  { predefinedQuestionId: 1, question: 'Is there fraud?', actualAnswer: 'RISK DETECTED: Yes, per doc X.', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, reason: 'Matches expected reasoning' },
                 ],
               },
               {
@@ -115,36 +113,6 @@ test('humanizeFieldName splits camelCase into title-cased words', () => {
 
 test('humanizeFieldName leaves a single lowercase word capitalized but otherwise unchanged', () => {
   assert.equal(humanizeFieldName('defendant'), 'Defendant');
-});
-
-test('formatRiskStatus replaces underscores with spaces', () => {
-  assert.equal(formatRiskStatus('RISK_DETECTED'), 'RISK DETECTED');
-  assert.equal(formatRiskStatus('UNSURE'), 'UNSURE');
-});
-
-test('formatRiskStatus falls back to N/A when riskStatus is missing', () => {
-  assert.equal(formatRiskStatus(undefined), 'N/A');
-  assert.equal(formatRiskStatus(null), 'N/A');
-  assert.equal(formatRiskStatus(''), 'N/A');
-});
-
-test('stripRiskStatusPrefix removes a leading "RISK ...:" label from an answer', () => {
-  assert.equal(
-    stripRiskStatusPrefix('RISK DETECTED: The plaintiff is flagged.'),
-    'The plaintiff is flagged.'
-  );
-  assert.equal(
-    stripRiskStatusPrefix('RISK NOT DETECTED: No issues found.'),
-    'No issues found.'
-  );
-});
-
-test('stripRiskStatusPrefix leaves an answer with no risk-status prefix unchanged', () => {
-  assert.equal(stripRiskStatusPrefix('The plaintiff is flagged.'), 'The plaintiff is flagged.');
-});
-
-test('stripRiskStatusPrefix handles a missing answer', () => {
-  assert.equal(stripRiskStatusPrefix(undefined), '');
 });
 
 test('sortByRiskStatus orders Detected before Unsure before Not Detected, regardless of input order', () => {
@@ -335,9 +303,8 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Bucket ID: 32023/);
   assert.match(text, /Generated at: 2026-08-13T11:22:47\n/);
   assert.match(text, /Is there fraud\?/);
-  assert.match(text, /Risk Status: RISK DETECTED/);
-  assert.match(text, /Answer: Yes, per doc X\./);
-  assert.doesNotMatch(text, /RISK DETECTED: Yes, per doc X\./, 'the risk-status prefix should be stripped from the rendered answer text');
+  assert.match(text, /Risk Status Match: YES/);
+  assert.match(text, /Answer: RISK DETECTED: Yes, per doc X\./, 'the risk-status prefix must remain in the rendered answer text');
   assert.match(text, /Citation Match: N\/A/);
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);

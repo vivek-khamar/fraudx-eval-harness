@@ -7,17 +7,11 @@ const path = require('node:path');
 
 function computeAccuracy(namedScores) {
   const scores = [
-    namedScores.riskStatusMatch,
     namedScores.answerContentMatch,
     namedScores.report_quality,
     namedScores.fraudRiskScoreMatch,
     namedScores.entityFieldsMatch,
   ];
-  // citationMatch is optional — a claim with no question graded for citations has no such
-  // signal to fold in, so it must not be forced into the weighting (see Global Constraints).
-  if (typeof namedScores.citationMatch === 'number') {
-    scores.push(namedScores.citationMatch);
-  }
   const weight = 100 / scores.length;
   return Math.round(scores.reduce((sum, s) => sum + weight * s, 0));
 }

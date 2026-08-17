@@ -38,14 +38,17 @@ document-ingestion + report pipeline and scores each against a human-verified an
       those tags is per-ingestion and changes every run, so it's never used for comparison, only
       `fileName` is. Questions that don't set `expectedCitedFileNames` are excluded from this
       fraction. If *no* question in a claim sets it, `citationMatch` is `undefined` for that
-      claim (not `0`) and the accuracy formula below falls back to five signals.
+      claim (not `0`). `citationMatch` is reported for visibility (in `namedScores` and the PDF)
+      but is not part of the accuracy formula below.
 
     The assertion also returns a `perQuestionBreakdown` array — one entry per question with its
-    `predefinedQuestionId`, `question`, `actualAnswer`, `matches` (boolean), `reason` (the
-    grader's per-question reasoning), `actualCitedFileNames`, `expectedCitedFileNames`, and
-    `citationMatches` (boolean, or `undefined` if that question wasn't graded for citations) —
-    which is what `scripts/generate-pdf-report.js` renders in the question-by-question section
-    of the PDF.
+    `predefinedQuestionId`, `question`, `actualAnswer`, `riskStatus` (the real report's raw value,
+    used only for sorting the PDF's question order), `riskStatusMatches` (boolean — whether that
+    `riskStatus` equals the gold `expectedRiskStatus` for this specific question), `matches`
+    (boolean), `reason` (the grader's per-question reasoning), `actualCitedFileNames`,
+    `expectedCitedFileNames`, and `citationMatches` (boolean, or `undefined` if that question
+    wasn't graded for citations) — which is what `scripts/generate-pdf-report.js` renders in the
+    question-by-question section of the PDF.
 
     The assertion's own score is the average of `riskStatusMatch` and `answerContentMatch`, plus
     `citationMatch` as a third term whenever at least one question in the claim was graded for
@@ -64,15 +67,10 @@ document-ingestion + report pipeline and scores each against a human-verified an
     - `entityFieldsMatch`: the fraction of `claimantName`, `defendant`, and `insuranceFirm` that
       match their `expected*` counterpart exactly, case- and whitespace-insensitively.
   `scripts/score-dashboard.js` (via its exported `computeAccuracy(namedScores)`, also reused by
-  `scripts/generate-pdf-report.js` so the two never drift apart) combines the named scores as an
-  equal split. When `citationMatch` is a number (at least one question in the claim was graded
-  for citations), that's a 6-way split:
-  `acc = round((100/6)×(riskStatusMatch + answerContentMatch + report_quality + fraudRiskScoreMatch + entityFieldsMatch + citationMatch))`.
-  When `citationMatch` is `undefined` (no question in the claim sets `expectedCitedFileNames`),
-  it falls back to the original 5-way equal-fifths formula:
-  `acc = round(20×riskStatusMatch + 20×answerContentMatch + 20×report_quality + 20×fraudRiskScoreMatch + 20×entityFieldsMatch)`.
-  `acc` numbers computed under one formula are not directly comparable to `acc` numbers computed
-  under the other — the weighting and underlying signal count both differ.
+  `scripts/generate-pdf-report.js` so the two never drift apart) combines four named scores as an
+  equal 4-way split — `riskStatusMatch` and `citationMatch` are deliberately excluded from this
+  formula (reported separately, for visibility, but not folded into accuracy):
+  `acc = round(25×answerContentMatch + 25×report_quality + 25×fraudRiskScoreMatch + 25×entityFieldsMatch)`.
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
 - **`provider.js` fetches the text of every document the real report actually cites** (not the
@@ -98,12 +96,13 @@ document-ingestion + report pipeline and scores each against a human-verified an
   question-by-question breakdown —
   questions are numbered sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then
   Unsure, then Not Detected) rather than by their original ID, so the highest-risk findings read
-  first. Each block has a heading followed by labeled Risk Status, Citation Match, Match, Answer,
-  and Reason
+  first. Each block has a heading followed by labeled Risk Status Match, Citation Match, Match,
+  Answer, and Reason
   fields, separated by a divider between questions, laid out as full-width flowing paragraphs so
   a single question's content stays together in reading order even across a page break; the
-  redundant "RISK ...:" prefix the real report embeds at the start of each answer is stripped
-  since risk status now has its own field. After that comes the claim-metadata match table
+  "RISK ...:" prefix the real report embeds at the start of each answer is left in place (Risk
+  Status Match reports whether that risk status matched expectations, it doesn't replace seeing
+  the actual answer text). After that comes the claim-metadata match table
   (`fraudRiskScore` and the three entity fields, expected vs. actual — field names are
   humanized for display, e.g. `fraudRiskScore` reads as "Fraud Risk Score") and an overall
   summary. A claim that gets skipped (no `bucketId`, or missing the data the PDF needs) is

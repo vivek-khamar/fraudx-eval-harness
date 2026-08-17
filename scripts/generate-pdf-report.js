@@ -45,10 +45,6 @@ function humanizeFieldName(camelCaseName) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-function formatRiskStatus(riskStatus) {
-  return riskStatus ? riskStatus.replace(/_/g, ' ') : 'N/A';
-}
-
 function formatCitationMatch(entry) {
   if (entry.citationMatches == null) {
     return 'N/A';
@@ -59,14 +55,6 @@ function formatCitationMatch(entry) {
   const expected = (entry.expectedCitedFileNames || []).join(', ') || '(none)';
   const actual = (entry.actualCitedFileNames || []).join(', ') || '(none)';
   return `NO (expected one of: ${expected}; got: ${actual})`;
-}
-
-// The real report embeds a human-readable risk-status label at the start of
-// each answer's text (e.g. "RISK DETECTED: ...", "RISK UNKNOWN: ..."). Now
-// that riskStatus is its own field, strip the redundant prefix from the
-// answer so it isn't shown twice.
-function stripRiskStatusPrefix(answer) {
-  return (answer || '').replace(/^RISK [A-Z ]+:\s*/, '');
 }
 
 const RISK_STATUS_ORDER = ['RISK_DETECTED', 'UNSURE', 'RISK_NOT_DETECTED'];
@@ -219,10 +207,10 @@ function renderClaimPdf(result, timestamp, filePath) {
     // wrapped cell's remaining columns onto whatever page the cursor lands on.
     doc.fontSize(11).font('Helvetica-Bold').text(`Q${index + 1}: ${entry.question}`, { width: usableWidth });
     doc.moveDown(0.5);
-    field('Risk Status: ', formatRiskStatus(entry.riskStatus));
+    field('Risk Status Match: ', entry.riskStatusMatches ? 'YES' : 'NO');
     field('Citation Match: ', formatCitationMatch(entry));
     field('Match: ', entry.matches ? 'YES' : 'NO');
-    field('Answer: ', stripRiskStatusPrefix(entry.actualAnswer));
+    field('Answer: ', entry.actualAnswer);
     field('Reason: ', entry.reason);
 
     if (index < orderedQuestions.length - 1) {
@@ -331,8 +319,6 @@ module.exports = {
   formatTimestampForFilename,
   formatLocalTimestamp,
   humanizeFieldName,
-  formatRiskStatus,
-  stripRiskStatusPrefix,
   sortByRiskStatus,
   uniqueFilePath,
   formatCitationMatch,

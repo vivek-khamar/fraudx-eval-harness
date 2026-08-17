@@ -55,6 +55,7 @@ async function qaMatchAssertion(output, context) {
     }
     const { matches, reason } = parseGraderVerdict(response.output);
     const riskStatus = actual && actual.riskStatus;
+    const riskStatusMatches = riskStatus === q.expectedRiskStatus;
 
     const actualCitedFileNames = extractCitedFileNamesFromText(actualAnswer);
     const expectedCitedFileNames = q.expectedCitedFileNames;
@@ -67,6 +68,7 @@ async function qaMatchAssertion(output, context) {
       question: q.question,
       actualAnswer,
       riskStatus,
+      riskStatusMatches,
       matches,
       reason,
       actualCitedFileNames,

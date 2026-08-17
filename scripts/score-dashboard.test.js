@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { scoreDashboard, computeAccuracy } = require('./score-dashboard');
 
-test('computeAccuracy averages all five named scores as equal fifths', () => {
+test('computeAccuracy averages the four named scores as equal quarters', () => {
   const namedScores = {
     riskStatusMatch: 0.9,
     answerContentMatch: 0.7,
@@ -13,7 +13,7 @@ test('computeAccuracy averages all five named scores as equal fifths', () => {
     fraudRiskScoreMatch: 1,
     entityFieldsMatch: 1,
   };
-  // round(20*0.9 + 20*0.7 + 20*0.85 + 20*1 + 20*1) = round(89) = 89
+  // round(25*0.7 + 25*0.85 + 25*1 + 25*1) = round(88.75) = 89
   assert.equal(computeAccuracy(namedScores), 89);
 });
 
@@ -25,46 +25,27 @@ test('computeAccuracy rounds a fractional weighted sum to the nearest integer', 
     fraudRiskScoreMatch: 1,
     entityFieldsMatch: 2 / 3,
   };
-  // round(20*0.629 + 20*0.571 + 20*0.7 + 20*1 + 20*(2/3)) = round(71.333...) = 71
-  assert.equal(computeAccuracy(namedScores), 71);
+  // round(25*0.571 + 25*0.7 + 25*1 + 25*(2/3)) = round(73.44...) = 73
+  assert.equal(computeAccuracy(namedScores), 73);
 });
 
-test('computeAccuracy folds citationMatch in as an equal sixth when it is present', () => {
-  const namedScores = {
-    riskStatusMatch: 0.9,
+test('computeAccuracy ignores riskStatusMatch and citationMatch entirely, even when present', () => {
+  const withExtras = {
+    riskStatusMatch: 0.1,
     answerContentMatch: 0.7,
     report_quality: 0.85,
     fraudRiskScoreMatch: 1,
     entityFieldsMatch: 1,
-    citationMatch: 0.5,
+    citationMatch: 0.2,
   };
-  // sum = 0.9+0.7+0.85+1+1+0.5 = 4.95; (100/6) * 4.95 = 82.5 -> rounds to 83
-  assert.equal(computeAccuracy(namedScores), 83);
-});
-
-test('computeAccuracy falls back to the five-signal equal-fifths formula when citationMatch is undefined', () => {
-  const namedScores = {
-    riskStatusMatch: 0.9,
+  const withoutExtras = {
     answerContentMatch: 0.7,
     report_quality: 0.85,
     fraudRiskScoreMatch: 1,
     entityFieldsMatch: 1,
-    citationMatch: undefined,
   };
-  // Same inputs as the very first computeAccuracy test in this file, minus citationMatch.
-  assert.equal(computeAccuracy(namedScores), 89);
-});
-
-test('computeAccuracy falls back to the five-signal formula when citationMatch is null', () => {
-  const namedScores = {
-    riskStatusMatch: 0.9,
-    answerContentMatch: 0.7,
-    report_quality: 0.85,
-    fraudRiskScoreMatch: 1,
-    entityFieldsMatch: 1,
-    citationMatch: null,
-  };
-  assert.equal(computeAccuracy(namedScores), 89);
+  assert.equal(computeAccuracy(withExtras), computeAccuracy(withoutExtras));
+  assert.equal(computeAccuracy(withExtras), 89);
 });
 
 test('scoreDashboard reads results.json and computes all three dashboard numbers for the one claim it contains', () => {
@@ -77,8 +58,8 @@ test('scoreDashboard reads results.json and computes all three dashboard numbers
   // Fixture has ingestion.timeMs: 60000, processing.timeMs: 300000 — reported in seconds, no budget scoring.
   assert.equal(dashboard.ingestionTime, 60);
   assert.equal(dashboard.processingTime, 300);
-  // accuracy = round(20*(riskStatusMatch + answerContentMatch + report_quality + fraudRiskScoreMatch + entityFieldsMatch))
-  //          = round(20*0.9 + 20*0.7 + 20*0.85 + 20*1 + 20*1) = round(89) = 89
+  // accuracy = round(25*(answerContentMatch + report_quality + fraudRiskScoreMatch + entityFieldsMatch))
+  //          = round(25*0.7 + 25*0.85 + 25*1 + 25*1) = round(88.75) = 89
   assert.equal(dashboard.accuracy, 89);
 });
 
@@ -164,8 +145,8 @@ test('scoreDashboard scores every claim in results.json independently, not just 
   assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].ingestionTime, 30);
   assert.equal(dashboards[1].processingTime, 120);
-  // accuracy = round(20*0.4 + 20*0.3 + 20*0.5 + 20*0 + 20*0.5) = round(34) = 34
-  assert.equal(dashboards[1].accuracy, 34);
+  // accuracy = round(25*0.3 + 25*0.5 + 25*0 + 25*0.5) = round(32.5) = 33
+  assert.equal(dashboards[1].accuracy, 33);
 });
 
 test('scoreDashboard throws a clear error when results.json has no results', () => {
@@ -274,7 +255,7 @@ test('scoreDashboard scores a healthy claim even when another claim in the same 
   assert.match(dashboards[0].error, /INGESTION model is not found/);
   assert.equal(dashboards[1].bucketId, 31970);
   assert.equal(dashboards[1].error, undefined);
-  assert.equal(dashboards[1].accuracy, 34);
+  assert.equal(dashboards[1].accuracy, 33);
 });
 
 test('scoreDashboard reports full scores for a claim that has namedScores even though promptfoo marked it as errored (an assertion failed its own pass bar)', () => {
@@ -315,8 +296,8 @@ test('scoreDashboard reports full scores for a claim that has namedScores even t
   assert.equal(dashboards[0].bucketId, 31994);
   assert.equal(dashboards[0].ingestionTime, 30);
   assert.equal(dashboards[0].processingTime, 120);
-  // accuracy = round(20*0.629 + 20*0.571 + 20*0.7 + 20*1 + 20*(2/3)) = round(71.333...) = 71
-  assert.equal(dashboards[0].accuracy, 71);
+  // accuracy = round(25*0.571 + 25*0.7 + 25*1 + 25*(2/3)) = round(73.44...) = 73
+  assert.equal(dashboards[0].accuracy, 73);
   assert.equal(dashboards[0].error, undefined);
 });
 
