@@ -426,6 +426,7 @@ test('a lookup keyed by s3-client.js chunkKey resolves end-to-end in qa-match-as
       bucketId: 32023,
       questions: [{
         predefinedQuestionId: 1,
+        question: 'Q1?',
         riskStatus: 'RISK_DETECTED',
         answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
       }],

@@ -8,16 +8,16 @@ const { computeRiskStatusMatch, buildQuestionGradingPrompt, parseGraderVerdict }
 
 test('computeRiskStatusMatch returns the fraction of matching risk determinations', () => {
   const expectedQa = [
-    { predefinedQuestionId: 1, expectedRiskStatus: 'RISK_DETECTED' },
-    { predefinedQuestionId: 2, expectedRiskStatus: 'UNSURE' },
-    { predefinedQuestionId: 3, expectedRiskStatus: 'RISK_DETECTED' },
+    { predefinedQuestionId: 1, question: 'Q1?', expectedRiskStatus: 'RISK_DETECTED' },
+    { predefinedQuestionId: 2, question: 'Q2?', expectedRiskStatus: 'UNSURE' },
+    { predefinedQuestionId: 3, question: 'Q3?', expectedRiskStatus: 'RISK_DETECTED' },
   ];
   const output = {
     report: {
       questions: [
-        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED' },
-        { predefinedQuestionId: 2, riskStatus: 'RISK_DETECTED' }, // mismatch vs UNSURE
-        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED' },
+        { predefinedQuestionId: 1, question: 'Q1?', riskStatus: 'RISK_DETECTED' },
+        { predefinedQuestionId: 2, question: 'Q2?', riskStatus: 'RISK_DETECTED' }, // mismatch vs UNSURE
+        { predefinedQuestionId: 3, question: 'Q3?', riskStatus: 'RISK_DETECTED' },
       ],
     },
   };
@@ -25,9 +25,23 @@ test('computeRiskStatusMatch returns the fraction of matching risk determination
 });
 
 test('computeRiskStatusMatch returns 0 for a question missing from the real report entirely', () => {
-  const expectedQa = [{ predefinedQuestionId: 1, expectedRiskStatus: 'RISK_DETECTED' }];
+  const expectedQa = [{ predefinedQuestionId: 1, question: 'Q1?', expectedRiskStatus: 'RISK_DETECTED' }];
   const output = { report: { questions: [] } };
   assert.equal(computeRiskStatusMatch(output, expectedQa), 0);
+});
+
+test('computeRiskStatusMatch matches by question text even when predefinedQuestionId differs between the actual report and golden data (ids are re-minted per claim-processing run, not stable)', () => {
+  const expectedQa = [
+    { predefinedQuestionId: 113, question: 'Is there evidence of fraud?', expectedRiskStatus: 'RISK_DETECTED' },
+  ];
+  const output = {
+    report: {
+      // Same question text, but a completely different predefinedQuestionId — as happens
+      // when the same claim is re-ingested/re-processed and the platform mints fresh ids.
+      questions: [{ predefinedQuestionId: 1625, question: 'Is there evidence of fraud?', riskStatus: 'RISK_DETECTED' }],
+    },
+  };
+  assert.equal(computeRiskStatusMatch(output, expectedQa), 1);
 });
 
 test('buildQuestionGradingPrompt embeds the question, expected answer, and actual answer', () => {
@@ -88,9 +102,9 @@ function fakeOutput() {
   return {
     report: {
       questions: [
-        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'ans1' },
-        { predefinedQuestionId: 2, riskStatus: 'RISK_DETECTED', answer: 'ans2' }, // mismatch vs UNSURE
-        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED', answer: 'ans3' },
+        { predefinedQuestionId: 1, question: 'Q1?', riskStatus: 'RISK_DETECTED', answer: 'ans1' },
+        { predefinedQuestionId: 2, question: 'Q2?', riskStatus: 'RISK_DETECTED', answer: 'ans2' }, // mismatch vs UNSURE
+        { predefinedQuestionId: 3, question: 'Q3?', riskStatus: 'RISK_DETECTED', answer: 'ans3' },
       ],
     },
   };
@@ -144,6 +158,29 @@ test('qaMatchAssertion sets riskStatusMatches false per-question when the actual
   // Questions 1 and 3 both expect and get RISK_DETECTED — a match.
   assert.equal(result.perQuestionBreakdown[0].riskStatusMatches, true);
   assert.equal(result.perQuestionBreakdown[2].riskStatusMatches, true);
+});
+
+test('qaMatchAssertion matches the actual question by question text, not predefinedQuestionId, since ids are re-minted every claim-processing run', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'looks right' }) }));
+
+  const context = fakeContext();
+  // Golden data was captured from one run; predefinedQuestionId 1 there may not exist at all
+  // in a fresh run's report — only the question text is guaranteed to still line up.
+  const output = {
+    report: {
+      questions: [
+        { predefinedQuestionId: 9001, question: 'Q1?', riskStatus: 'RISK_DETECTED', answer: 'ans1' },
+        { predefinedQuestionId: 9002, question: 'Q2?', riskStatus: 'RISK_DETECTED', answer: 'ans2' },
+        { predefinedQuestionId: 9003, question: 'Q3?', riskStatus: 'RISK_DETECTED', answer: 'ans3' },
+      ],
+    },
+  };
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(result.perQuestionBreakdown[0].actualAnswer, 'ans1');
+  assert.notEqual(result.perQuestionBreakdown[0].actualAnswer, 'NO ANSWER PROVIDED');
+  assert.equal(result.namedScores.riskStatusMatch, 2 / 3);
 });
 
 test('qaMatchAssertion grades a missing actual answer as NO ANSWER PROVIDED', async (t) => {
@@ -208,9 +245,9 @@ function fakeOutputWithCitations() {
   return {
     report: {
       questions: [
-        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
-        { predefinedQuestionId: 2, riskStatus: 'UNSURE', answer: 'see <InTextCitation fileName="b.pdf" documentId="doc-2" chunkId="chunk-2"></InTextCitation>' },
-        { predefinedQuestionId: 3, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="c.pdf" documentId="doc-3" chunkId="chunk-3"></InTextCitation>' }, // no expectedChunkText — excluded
+        { predefinedQuestionId: 1, question: 'Q1?', riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
+        { predefinedQuestionId: 2, question: 'Q2?', riskStatus: 'UNSURE', answer: 'see <InTextCitation fileName="b.pdf" documentId="doc-2" chunkId="chunk-2"></InTextCitation>' },
+        { predefinedQuestionId: 3, question: 'Q3?', riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="c.pdf" documentId="doc-3" chunkId="chunk-3"></InTextCitation>' }, // no expectedChunkText — excluded
       ],
     },
     chunkGroundingData: new Map([
@@ -379,7 +416,7 @@ test('qaMatchAssertion correctly reads expectedChunkText when vars are built by 
   const output = {
     report: {
       questions: [
-        { predefinedQuestionId: 1, riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
+        { predefinedQuestionId: 1, question: 'Q1?', riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
       ],
     },
     chunkGroundingData: new Map([['doc-1:chunk-1', 'matching text']]),

@@ -4,10 +4,17 @@ const promptfoo = require('promptfoo');
 const s3Client = require('../s3-client');
 const { extractCitedCitationsFromText } = require('./extract-cited-file-names');
 
+// predefinedQuestionId is minted fresh by the platform on every claim-processing run — it is
+// NOT stable across runs of the same claim (analogous to documentId/chunkId). The question text
+// itself is the only reliably stable identifier, so matching must key on that instead.
+function findActualQuestion(actualQuestions, expectedQuestion) {
+  return actualQuestions.find((r) => r.question === expectedQuestion.question);
+}
+
 function computeRiskStatusMatch(output, expectedQa) {
   const actualQuestions = output.report.questions;
   const matched = expectedQa.filter((q) => {
-    const actual = actualQuestions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
+    const actual = findActualQuestion(actualQuestions, q);
     return actual && actual.riskStatus === q.expectedRiskStatus;
   }).length;
   return matched / expectedQa.length;
@@ -94,7 +101,7 @@ async function qaMatchAssertion(output, context) {
   const provider = await promptfoo.loadApiProvider(context.test.options.provider);
   const perQuestionBreakdown = [];
   for (const q of expectedQa) {
-    const actual = actualQuestions.find((r) => r.predefinedQuestionId === q.predefinedQuestionId);
+    const actual = findActualQuestion(actualQuestions, q);
     const actualAnswer = actual && actual.answer ? actual.answer : 'NO ANSWER PROVIDED';
     const prompt = buildQuestionGradingPrompt(q, actualAnswer);
     const response = await provider.callApi(prompt);
@@ -158,6 +165,7 @@ async function qaMatchAssertion(output, context) {
 
 module.exports = qaMatchAssertion;
 module.exports.computeRiskStatusMatch = computeRiskStatusMatch;
+module.exports.findActualQuestion = findActualQuestion;
 module.exports.buildQuestionGradingPrompt = buildQuestionGradingPrompt;
 module.exports.buildChunkTextMatchPrompt = buildChunkTextMatchPrompt;
 module.exports.parseGraderVerdict = parseGraderVerdict;

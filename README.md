@@ -47,6 +47,12 @@ document-ingestion + report pipeline and scores each against a human-verified an
       `undefined` for that claim (not `0`). `citationMatch` is reported for visibility (in
       `namedScores` and the PDF) but is not part of the accuracy formula below.
 
+    Questions are matched between the golden `expected.qa` and the real report by `question` text,
+    not `predefinedQuestionId` — like `documentId`/`chunkId`, that id is minted fresh by the
+    platform on every claim-processing run, so the same claim re-ingested twice gets two
+    different sets of ids for the same questions. `predefinedQuestionId` is still carried through
+    `perQuestionBreakdown` (sourced from the golden side) for readability, not for matching.
+
     The assertion also returns a `perQuestionBreakdown` array — one entry per question with its
     `predefinedQuestionId`, `question`, `actualAnswer`, `riskStatus` (the real report's raw value,
     used only for sorting the PDF's question order), `riskStatusMatches` (boolean — whether that
