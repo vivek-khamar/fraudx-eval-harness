@@ -52,9 +52,7 @@ function formatCitationMatch(entry) {
   if (entry.citationMatches) {
     return 'YES';
   }
-  const expected = (entry.expectedCitedFileNames || []).join(', ') || '(none)';
-  const actual = (entry.actualCitedFileNames || []).join(', ') || '(none)';
-  return `NO (expected one of: ${expected}; got: ${actual})`;
+  return `NO (${entry.citationMatchReason})`;
 }
 
 const RISK_STATUS_ORDER = ['RISK_DETECTED', 'UNSURE', 'RISK_NOT_DETECTED'];

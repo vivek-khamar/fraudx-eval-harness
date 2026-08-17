@@ -145,17 +145,10 @@ test('formatCitationMatch renders YES for a matching citation', () => {
   assert.equal(formatCitationMatch({ citationMatches: true }), 'YES');
 });
 
-test('formatCitationMatch renders NO with expected/actual fileNames for a non-matching citation', () => {
+test('formatCitationMatch renders NO with the grader\'s reason for a non-matching citation', () => {
   assert.equal(
-    formatCitationMatch({ citationMatches: false, expectedCitedFileNames: ['a.pdf', 'b.pdf'], actualCitedFileNames: ['c.pdf'] }),
-    'NO (expected one of: a.pdf, b.pdf; got: c.pdf)'
-  );
-});
-
-test('formatCitationMatch shows (none) when a non-matching question actually cited nothing', () => {
-  assert.equal(
-    formatCitationMatch({ citationMatches: false, expectedCitedFileNames: ['a.pdf'], actualCitedFileNames: [] }),
-    'NO (expected one of: a.pdf; got: (none))'
+    formatCitationMatch({ citationMatches: false, citationMatchReason: 'The cited passage does not mention the expected entity.' }),
+    'NO (The cited passage does not mention the expected entity.)'
   );
 });
 
@@ -479,7 +472,7 @@ test('generatePdfReports logs a console.error mentioning the bucketId of a claim
   );
 });
 
-test('generatePdfReports renders Citation Match as YES, NO (with expected/actual fileNames), and N/A per question', async (t) => {
+test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s reason), and N/A per question', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -489,9 +482,9 @@ test('generatePdfReports renders Citation Match as YES, NO (with expected/actual
     (c) => c.assertion.metric === 'qa_match'
   );
   qaMatchComponent.perQuestionBreakdown = [
-    { predefinedQuestionId: 1, question: 'MATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', matches: true, reason: 'r', actualCitedFileNames: ['a.pdf'], expectedCitedFileNames: ['a.pdf'], citationMatches: true },
-    { predefinedQuestionId: 2, question: 'MISMATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', matches: true, reason: 'r', actualCitedFileNames: ['c.pdf'], expectedCitedFileNames: ['a.pdf', 'b.pdf'], citationMatches: false },
-    { predefinedQuestionId: 3, question: 'UNGRADED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', matches: true, reason: 'r', actualCitedFileNames: ['z.pdf'], expectedCitedFileNames: undefined, citationMatches: undefined },
+    { predefinedQuestionId: 1, question: 'MATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, reason: 'r', actualCitedFileNames: ['a.pdf'], citationMatches: true, citationMatchReason: 'Matches the expected passage.' },
+    { predefinedQuestionId: 2, question: 'MISMATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', riskStatusMatches: false, matches: true, reason: 'r', actualCitedFileNames: ['c.pdf'], citationMatches: false, citationMatchReason: 'The cited passage is unrelated to the expected passage.' },
+    { predefinedQuestionId: 3, question: 'UNGRADED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', riskStatusMatches: true, matches: true, reason: 'r', actualCitedFileNames: ['z.pdf'], citationMatches: undefined, citationMatchReason: undefined },
   ];
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
@@ -510,6 +503,6 @@ test('generatePdfReports renders Citation Match as YES, NO (with expected/actual
   // Risk-status ordering puts MATCHED (RISK_DETECTED) first, MISMATCHED (UNSURE) second,
   // UNGRADED (RISK_NOT_DETECTED) third — so these markers already appear in this order.
   assert.match(text, /MATCHED-QUESTION[\s\S]*?Citation Match: YES/);
-  assert.match(text, /MISMATCHED-QUESTION[\s\S]*?Citation Match: NO \(expected one of: a\.pdf, b\.pdf; got: c\.pdf\)/);
+  assert.match(text, /MISMATCHED-QUESTION[\s\S]*?Citation Match: NO \(The cited passage is unrelated to the expected passage\.\)/);
   assert.match(text, /UNGRADED-QUESTION[\s\S]*?Citation Match: N\/A/);
 });
