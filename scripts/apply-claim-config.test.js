@@ -65,6 +65,7 @@ test('applyClaimConfig throws naming every missing env var, without calling logi
     AWS_ACCESS_KEY_ID: 'AKIAFAKE',
     AWS_SECRET_ACCESS_KEY: 'fake-secret',
     AWS_REGION: 'us-east-1',
+    AWS_S3_BUCKET_NAME: 'test-bucket',
     SKIP_S3_GROUNDING: undefined,
   });
   let loginCalled = false;
@@ -89,6 +90,7 @@ test('applyClaimConfig throws naming only the missing env var when just one is u
     AWS_ACCESS_KEY_ID: 'AKIAFAKE',
     AWS_SECRET_ACCESS_KEY: 'fake-secret',
     AWS_REGION: 'us-east-1',
+    AWS_S3_BUCKET_NAME: 'test-bucket',
     SKIP_S3_GROUNDING: undefined,
   });
   let loginCalled = false;
@@ -113,6 +115,7 @@ test('applyClaimConfig throws naming the missing AWS env vars, without calling l
     AWS_ACCESS_KEY_ID: undefined,
     AWS_SECRET_ACCESS_KEY: undefined,
     AWS_REGION: undefined,
+    AWS_S3_BUCKET_NAME: undefined,
     SKIP_S3_GROUNDING: undefined,
   });
   let loginCalled = false;
@@ -120,7 +123,7 @@ test('applyClaimConfig throws naming the missing AWS env vars, without calling l
 
   await assert.rejects(
     () => applyClaimConfig(claimsPath),
-    /Missing required claim config env var\(s\): AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION/
+    /Missing required claim config env var\(s\): AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_S3_BUCKET_NAME/
   );
   assert.equal(loginCalled, false);
   assert.equal(fs.readFileSync(claimsPath, 'utf8'), originalContent);
@@ -138,6 +141,7 @@ test('applyClaimConfig does not require the AWS env vars when SKIP_S3_GROUNDING=
     AWS_ACCESS_KEY_ID: undefined,
     AWS_SECRET_ACCESS_KEY: undefined,
     AWS_REGION: undefined,
+    AWS_S3_BUCKET_NAME: undefined,
     SKIP_S3_GROUNDING: 'true',
   });
   mockFraudxClient(t, {
@@ -167,6 +171,7 @@ test('applyClaimConfig resolves both model names and writes claimName/ingestionM
     AWS_ACCESS_KEY_ID: 'AKIAFAKE',
     AWS_SECRET_ACCESS_KEY: 'fake-secret',
     AWS_REGION: 'us-east-1',
+    AWS_S3_BUCKET_NAME: 'test-bucket',
     SKIP_S3_GROUNDING: undefined,
   });
   let loginCalls = 0;
@@ -201,6 +206,7 @@ test('applyClaimConfig propagates a clear error when a displayName does not reso
     AWS_ACCESS_KEY_ID: 'AKIAFAKE',
     AWS_SECRET_ACCESS_KEY: 'fake-secret',
     AWS_REGION: 'us-east-1',
+    AWS_S3_BUCKET_NAME: 'test-bucket',
     SKIP_S3_GROUNDING: undefined,
   });
   mockFraudxClient(t, {

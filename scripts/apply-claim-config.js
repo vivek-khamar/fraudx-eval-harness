@@ -30,6 +30,7 @@ async function applyClaimConfig(claimsPath) {
     if (!process.env.AWS_ACCESS_KEY_ID) missing.push('AWS_ACCESS_KEY_ID');
     if (!process.env.AWS_SECRET_ACCESS_KEY) missing.push('AWS_SECRET_ACCESS_KEY');
     if (!process.env.AWS_REGION) missing.push('AWS_REGION');
+    if (!process.env.AWS_S3_BUCKET_NAME) missing.push('AWS_S3_BUCKET_NAME');
   }
   if (missing.length > 0) {
     throw new Error(`Missing required claim config env var(s): ${missing.join(', ')}`);

@@ -88,7 +88,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
   grounding file itself is missing for that claim, it's skipped rather than failing the run.
 - **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
 - **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
-- **Citations are parsed out of free-text answers, then grounded via a separate S3 file.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="..." chunkId="...">` tags inside each answer's text, not a structured field. `scripts/extract-cited-file-names.js`'s `extractCitedCitationsFromText` is the one place that regex-extracts `fileName`, `documentId`, and `chunkId` from these tags. Neither `documentId` nor `chunkId` is stable across eval runs (both are assigned per-ingestion), so neither is ever compared directly — instead, `s3-client.js`'s `fetchChunkGroundingData(bucketId)` reads a separate per-claim JSON file FraudX writes to the `fraudx-qa-claim-processor` S3 bucket (keyed `{bucketId}.json`), which maps each citation's `(documentId, chunkId)` pair to the exact verbatim chunk text GX grounded that citation in. `provider.js` uses this to build `citedDocumentsText` and exposes the raw lookup as `output.chunkGroundingData` so `qa-match-assertion.js`'s `citationMatch` (per question) can reuse it without a second S3 fetch. Reading this bucket requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` in `.env` (see `.env.example`).
+- **Citations are parsed out of free-text answers, then grounded via a separate S3 file.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="..." chunkId="...">` tags inside each answer's text, not a structured field. `scripts/extract-cited-file-names.js`'s `extractCitedCitationsFromText` is the one place that regex-extracts `fileName`, `documentId`, and `chunkId` from these tags. Neither `documentId` nor `chunkId` is stable across eval runs (both are assigned per-ingestion), so neither is ever compared directly — instead, `s3-client.js`'s `fetchChunkGroundingData(bucketId)` reads a separate per-claim JSON file FraudX writes to an S3 bucket (keyed `{bucketId}.json`), which maps each citation's `(documentId, chunkId)` pair to the exact verbatim chunk text GX grounded that citation in. The bucket name itself is not hardcoded — it comes from `AWS_S3_BUCKET_NAME`, since different environments read from different buckets. `provider.js` uses this to build `citedDocumentsText` and exposes the raw lookup as `output.chunkGroundingData` so `qa-match-assertion.js`'s `citationMatch` (per question) can reuse it without a second S3 fetch. Reading this bucket requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` in `.env` (see `.env.example`).
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
@@ -122,8 +122,8 @@ document-ingestion + report pipeline and scores each against a human-verified an
 npm install
 cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, CLAIM_NAME/
                         # INGESTION_MODEL_NAME/PROCESSING_MODEL_NAME, and
-                        # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION (needed to read the
-                        # S3 chunk-grounding file — see .env.example)
+                        # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION/AWS_S3_BUCKET_NAME
+                        # (needed to read the S3 chunk-grounding file — see .env.example)
 ```
 
 ## Running against the real FraudX platform
@@ -142,9 +142,9 @@ npm run eval
   claim name can't be reused on the real platform, and the model choice is a per-run
   decision, not a fixed answer-key fact), so the eval fails fast with a clear error if
   any of the three env vars is unset. The same check also requires `AWS_ACCESS_KEY_ID`,
-  `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` (which `s3-client.js` needs to read the
-  chunk-grounding file), naming every missing variable in one error — so a run can't get
-  hours into ingestion before discovering it can't reach S3. Setting
+  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` (which `s3-client.js`
+  needs to read the chunk-grounding file), naming every missing variable in one error —
+  so a run can't get hours into ingestion before discovering it can't reach S3. Setting
   `SKIP_S3_GROUNDING=true` skips that part of the check, since it skips the S3 lookup itself.
 - `npm run eval` runs `npm run eval:raw` (which runs `promptfoo eval` against
   `FRAUDX_ENDPOINT_URI`, grades the result, and writes `results.json`) and then
@@ -219,7 +219,7 @@ FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FR
 that has no real S3 chunk-grounding file behind it, so `provider.js` skips the S3 lookup entirely
 (`chunkGroundingData` is `null`, `citedDocumentsText` is `{}`, and `citationMatch` reports "no
 citation resolved" for every question) and no AWS credentials are needed — it also relaxes the
-`preeval` step's fail-fast check for `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`.
+`preeval` step's fail-fast check for `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`AWS_S3_BUCKET_NAME`.
 Never set it in CI or against the real platform — it silently empties the grounding-based signals.
 
 ## CI
@@ -241,7 +241,8 @@ Dispatching it prompts for a `mode`:
 
   `full-eval` requires these repo (or environment) secrets: `FRAUDX_ENDPOINT_URI`,
   `FRAUDX_LOGIN_EMAIL`, `FRAUDX_LOGIN_PASSWORD`, `GRADER_PROVIDER`, `AWS_ACCESS_KEY_ID`,
-  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (for reading the S3 chunk-grounding file), and whichever
+  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_BUCKET_NAME` (for reading the S3
+  chunk-grounding file), and whichever
   of `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` matches `GRADER_PROVIDER`'s value (both are passed
   through; an unused one is simply ignored).
 

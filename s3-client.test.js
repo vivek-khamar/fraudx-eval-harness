@@ -5,6 +5,12 @@ const assert = require('node:assert/strict');
 const { S3Client } = require('@aws-sdk/client-s3');
 const { fetchChunkGroundingData } = require('./s3-client');
 
+// Every fetchChunkGroundingData call now reads the bucket name from AWS_S3_BUCKET_NAME.
+// Default it for every test in this file except the two below that specifically test
+// this behavior — this file runs in its own process under node:test, so this module-wide
+// default doesn't leak to other test files.
+process.env.AWS_S3_BUCKET_NAME = 'test-bucket';
+
 // S3Client.prototype.send is mocked directly (like fraudx-client.js's module
 // functions are mocked in provider.test.js) rather than hitting real AWS —
 // this file runs in its own process under node:test, so mutating the
@@ -21,6 +27,47 @@ function bodyOf(jsonOrString) {
   const text = typeof jsonOrString === 'string' ? jsonOrString : JSON.stringify(jsonOrString);
   return { Body: { transformToString: async () => text } };
 }
+
+function withEnv(t, name, value) {
+  const original = process.env[name];
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+  t.after(() => {
+    if (original === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = original;
+    }
+  });
+}
+
+test('fetchChunkGroundingData reads the bucket name from AWS_S3_BUCKET_NAME, not a hardcoded value', async (t) => {
+  withEnv(t, 'AWS_S3_BUCKET_NAME', 'my-dynamic-bucket');
+  let bucketUsed;
+  mockSend(t, async (command) => {
+    bucketUsed = command.input.Bucket;
+    return bodyOf({ questionnaire: [] });
+  });
+
+  await fetchChunkGroundingData(12345, 5000);
+
+  assert.equal(bucketUsed, 'my-dynamic-bucket');
+});
+
+test('fetchChunkGroundingData throws a clear error when AWS_S3_BUCKET_NAME is not set', async (t) => {
+  withEnv(t, 'AWS_S3_BUCKET_NAME', undefined);
+  mockSend(t, async () => {
+    throw new Error('fetchChunkGroundingData must not call S3 without a bucket name');
+  });
+
+  await assert.rejects(
+    () => fetchChunkGroundingData(12345, 5000),
+    /AWS_S3_BUCKET_NAME is not set\. Copy \.env\.example to \.env and fill it in\./
+  );
+});
 
 test('fetchChunkGroundingData returns a lookup keyed by documentId:chunkId', async (t) => {
   mockSend(t, async () => bodyOf({

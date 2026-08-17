@@ -2,8 +2,6 @@
 
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
-const BUCKET_NAME = 'fraudx-qa-claim-processor';
-
 // The one definition of the chunk-grounding lookup's key format. Exported because the
 // producer (this file) and both consumers (provider.js, scripts/qa-match-assertion.js)
 // have to agree on it exactly — a drift in any one of them wouldn't crash, it would
@@ -39,11 +37,15 @@ function buildGroundingLookup(parsed, bucketId) {
 // the file itself is regenerated fresh each run too, so this lookup is always
 // built from the same run's own data).
 async function fetchChunkGroundingData(bucketId, timeoutMs) {
+  const bucketName = process.env.AWS_S3_BUCKET_NAME;
+  if (!bucketName) {
+    throw new Error('AWS_S3_BUCKET_NAME is not set. Copy .env.example to .env and fill it in.');
+  }
   const client = new S3Client({});
   let response;
   try {
     response = await client.send(
-      new GetObjectCommand({ Bucket: BUCKET_NAME, Key: `${bucketId}.json` }),
+      new GetObjectCommand({ Bucket: bucketName, Key: `${bucketId}.json` }),
       { abortSignal: AbortSignal.timeout(timeoutMs) }
     );
   } catch (err) {
