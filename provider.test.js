@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fraudxClient = require('./fraudx-client');
+const s3Client = require('./s3-client');
 const Provider = require('./provider');
-const { extractCitedFileNames } = Provider;
 
 function mockFraudxClient(t, overrides) {
   const originals = {};
@@ -16,6 +16,19 @@ function mockFraudxClient(t, overrides) {
     for (const name of Object.keys(overrides)) {
       fraudxClient[name] = originals[name];
     }
+  });
+}
+
+// Every callApi() call now unconditionally calls s3Client.fetchChunkGroundingData once
+// it has a report. Default to "no grounding file" for every test in this file except
+// the ones below that explicitly need real grounding data — this file runs in its own
+// process under node:test, so this module-wide default doesn't leak to other test files.
+s3Client.fetchChunkGroundingData = async () => null;
+
+function mockS3Client(t, impl) {
+  s3Client.fetchChunkGroundingData = impl;
+  t.after(() => {
+    s3Client.fetchChunkGroundingData = async () => null; // restore to this file's default, not the real implementation
   });
 }
 
@@ -82,21 +95,6 @@ function happyPathMocks(calls) {
     },
   };
 }
-
-test('extractCitedFileNames collects unique, decoded fileNames from every answer\'s citations', () => {
-  const report = {
-    questions: [
-      { answer: 'x <InTextCitation fileName="JOSE%2BBRIONES.pdf"></InTextCitation>' },
-      { answer: 'y <InTextCitation fileName="JOSE%2BBRIONES.pdf"></InTextCitation> and <InTextCitation fileName="other.pdf"></InTextCitation>' },
-      { answer: 'no citations here' },
-    ],
-  };
-  assert.deepEqual(extractCitedFileNames(report), ['JOSE+BRIONES.pdf', 'other.pdf']);
-});
-
-test('extractCitedFileNames returns an empty array when no answers have citations', () => {
-  assert.deepEqual(extractCitedFileNames({ questions: [{ answer: 'no sources found' }] }), []);
-});
 
 test('callApi orchestrates the full sequence in order and returns the report', async (t) => {
   process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
@@ -260,52 +258,7 @@ test('callApi throws when no upload URL matches a source document\'s fileName', 
   await assert.rejects(() => provider.callApi('FX-GOLD-5K-v1', fakeContext()), /No upload URL returned for file "a\.pdf"/);
 });
 
-test('callApi fetches text only for documents actually cited in the real report, truncated to 15000 chars', async (t) => {
-  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
-  t.after(() => {
-    delete process.env.FRAUDX_ENDPOINT_URI;
-  });
-  const getDownloadUrlCalls = [];
-  // The pre-existing ingestion loop uploads every document in sourceDocs (including uncited.pdf) into
-  // the new claim bucket, which itself calls getDownloadUrl/requestUploadUrls for both documents. Since
-  // requestUploadUrls must be given a per-file response (the happyPathMocks default only knows 'a.pdf'),
-  // and this test's own getDownloadUrl assertion is only about the *new* cited-fetch step (not ingestion),
-  // track calls to getDownloadUrl only from the point the report is fetched onward.
-  let reportFetched = false;
-  mockFraudxClient(t, {
-    ...happyPathMocks([]),
-    listBucketDocuments: async () => [
-      { gxMasterId: 1, fileName: 'a.pdf', extension: 'pdf' },
-      { gxMasterId: 2, fileName: 'uncited.pdf', extension: 'pdf' },
-    ],
-    requestUploadUrls: async (base, auth, files) => [{ fileName: files[0].fileName, jobId: 1, uploadUrl: 'https://s3.example/put' }],
-    fetchReport: async () => {
-      reportFetched = true;
-      return {
-        reportId: 'report-1',
-        summary: 's',
-        questions: [{ predefinedQuestionId: 1, answer: 'see <InTextCitation fileName="a.pdf"></InTextCitation>' }],
-      };
-    },
-    getDownloadUrl: async (base, gxMasterId) => {
-      if (reportFetched) {
-        getDownloadUrlCalls.push(gxMasterId);
-      }
-      return 'https://s3.example/get';
-    },
-    downloadFile: async () => new ArrayBuffer(4),
-    extractPdfText: async () => 'x'.repeat(20000),
-  });
-
-  const provider = new Provider();
-  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
-
-  assert.deepEqual(getDownloadUrlCalls, [1], 'only the cited document (gxMasterId 1) should be downloaded, not the uncited one');
-  assert.equal(result.output.citedDocumentsText['a.pdf'].length, 15000, 'document text must be truncated to the char limit');
-  assert.equal(Object.keys(result.output.citedDocumentsText).length, 1);
-});
-
-test('callApi skips a cited fileName it cannot match to a source document, without failing the run', async (t) => {
+test('callApi fetches grounding text only for citations that resolve in the S3 chunk-grounding file, truncated to 15000 chars', async (t) => {
   process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
     delete process.env.FRAUDX_ENDPOINT_URI;
@@ -315,9 +268,40 @@ test('callApi skips a cited fileName it cannot match to a source document, witho
     fetchReport: async () => ({
       reportId: 'report-1',
       summary: 's',
-      questions: [{ predefinedQuestionId: 1, answer: 'see <InTextCitation fileName="unknown.pdf"></InTextCitation>' }],
+      bucketId: 32023,
+      questions: [{
+        predefinedQuestionId: 1,
+        answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+      }],
     }),
   });
+  mockS3Client(t, async () => new Map([['doc-1:chunk-1', 'x'.repeat(20000)]]));
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.citedDocumentsText['a.pdf'].length, 15000, 'document text must be truncated to the char limit');
+  assert.equal(Object.keys(result.output.citedDocumentsText).length, 1);
+});
+
+test('callApi skips a citation whose (documentId, chunkId) isn\'t in the grounding file, without failing the run', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    fetchReport: async () => ({
+      reportId: 'report-1',
+      summary: 's',
+      bucketId: 32023,
+      questions: [{
+        predefinedQuestionId: 1,
+        answer: 'see <InTextCitation fileName="unknown.pdf" documentId="doc-x" chunkId="chunk-x"></InTextCitation>',
+      }],
+    }),
+  });
+  mockS3Client(t, async () => new Map()); // grounding file exists but has nothing for this citation
 
   const provider = new Provider();
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
@@ -336,4 +320,33 @@ test('callApi returns an empty citedDocumentsText when the report has no citatio
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
   assert.deepEqual(result.output.citedDocumentsText, {});
+});
+
+test('callApi exposes the raw chunk-grounding lookup as output.chunkGroundingData', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, happyPathMocks([]));
+  const groundingMap = new Map([['doc-1:chunk-1', 'some text']]);
+  mockS3Client(t, async () => groundingMap);
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.chunkGroundingData, groundingMap);
+});
+
+test('callApi exposes output.chunkGroundingData as null when the grounding file is missing', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, happyPathMocks([]));
+  mockS3Client(t, async () => null);
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.chunkGroundingData, null);
 });

@@ -1,23 +1,10 @@
 'use strict';
 
 const fraudxClient = require('./fraudx-client');
-const { extractCitedFileNamesFromText } = require('./scripts/extract-cited-file-names');
+const s3Client = require('./s3-client');
+const { extractCitedCitationsFromText } = require('./scripts/extract-cited-file-names');
 
 const DOCUMENT_TEXT_CHAR_LIMIT = 15000;
-
-function extractCitedFileNames(report) {
-  const fileNames = [];
-  const seen = new Set();
-  for (const q of report.questions) {
-    for (const fileName of extractCitedFileNamesFromText(q.answer)) {
-      if (!seen.has(fileName)) {
-        seen.add(fileName);
-        fileNames.push(fileName);
-      }
-    }
-  }
-  return fileNames;
-}
 
 class FraudXClaimProvider {
   id() {
@@ -81,17 +68,24 @@ class FraudXClaimProvider {
 
     const report = await fraudxClient.fetchReport(base, bucket.latestReportId, auth, timeoutMs);
 
-    const citedFileNames = extractCitedFileNames(report);
+    const citations = report.questions.flatMap((q) => extractCitedCitationsFromText(q.answer));
+    const chunkGroundingData = await s3Client.fetchChunkGroundingData(report.bucketId, timeoutMs);
     const citedDocumentsText = {};
-    for (const fileName of citedFileNames) {
-      const citedDoc = sourceDocs.find((d) => d.fileName === fileName);
-      if (!citedDoc) {
-        continue; // the real report cited a file we don't recognize — skip, don't fail the run
+    if (chunkGroundingData) {
+      const chunksByFileName = new Map();
+      for (const { fileName, documentId, chunkId } of citations) {
+        const chunkText = chunkGroundingData.get(`${documentId}:${chunkId}`);
+        if (!chunkText) {
+          continue; // not found in the grounding file — skip, no fallback
+        }
+        if (!chunksByFileName.has(fileName)) {
+          chunksByFileName.set(fileName, []);
+        }
+        chunksByFileName.get(fileName).push(chunkText);
       }
-      const citedDownloadUrl = await fraudxClient.getDownloadUrl(base, citedDoc.gxMasterId, auth, timeoutMs);
-      const citedBytes = await fraudxClient.downloadFile(citedDownloadUrl, timeoutMs);
-      const text = await fraudxClient.extractPdfText(citedBytes);
-      citedDocumentsText[fileName] = text.slice(0, DOCUMENT_TEXT_CHAR_LIMIT);
+      for (const [fileName, texts] of chunksByFileName) {
+        citedDocumentsText[fileName] = texts.join('\n\n').slice(0, DOCUMENT_TEXT_CHAR_LIMIT);
+      }
     }
 
     return {
@@ -100,10 +94,10 @@ class FraudXClaimProvider {
         processing: { timeMs: processingTimeMs },
         report,
         citedDocumentsText,
+        chunkGroundingData,
       },
     };
   }
 }
 
 module.exports = FraudXClaimProvider;
-module.exports.extractCitedFileNames = extractCitedFileNames;
