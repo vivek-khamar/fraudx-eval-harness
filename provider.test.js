@@ -21,10 +21,11 @@ function mockFraudxClient(t, overrides) {
   });
 }
 
-// Every callApi() call now unconditionally calls s3Client.fetchChunkGroundingData once
-// it has a report. Default to "no grounding file" for every test in this file except
-// the ones below that explicitly need real grounding data — this file runs in its own
-// process under node:test, so this module-wide default doesn't leak to other test files.
+// Most callApi() calls reach s3Client.fetchChunkGroundingData once they have a report
+// (unless SKIP_S3_GROUNDING or a missing bucketId short-circuits it first). Default to
+// "no grounding file" for every test in this file except the ones below that explicitly
+// need real grounding data — this file runs in its own process under node:test, so this
+// module-wide default doesn't leak to other test files.
 s3Client.fetchChunkGroundingData = async () => null;
 
 // Most fixtures here have no grounding data on purpose, and provider.js now warns on every
@@ -368,12 +369,19 @@ test('callApi skips the S3 lookup entirely when SKIP_S3_GROUNDING=true', async (
   mockS3Client(t, async () => {
     throw new Error('fetchChunkGroundingData must not be called when SKIP_S3_GROUNDING=true');
   });
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (msg) => warnings.push(msg);
+  t.after(() => {
+    console.warn = originalWarn;
+  });
 
   const provider = new Provider();
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
   assert.equal(result.output.chunkGroundingData, null);
   assert.deepEqual(result.output.citedDocumentsText, {});
+  assert.deepEqual(warnings, [], 'an intentional SKIP_S3_GROUNDING skip must not warn as if grounding data were unexpectedly missing');
 });
 
 test('callApi exposes output.chunkGroundingData as null when the grounding file is missing', async (t) => {
@@ -383,11 +391,21 @@ test('callApi exposes output.chunkGroundingData as null when the grounding file 
   });
   mockFraudxClient(t, happyPathMocks([]));
   mockS3Client(t, async () => null);
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (msg) => warnings.push(msg);
+  t.after(() => {
+    console.warn = originalWarn;
+  });
 
   const provider = new Provider();
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
   assert.equal(result.output.chunkGroundingData, null);
+  assert.ok(
+    warnings.some((w) => /No S3 chunk-grounding file found/.test(w)),
+    `a genuinely-missing grounding file must be warned about, not silently swallowed (warnings: ${JSON.stringify(warnings)})`
+  );
 });
 
 // The one test that crosses the provider.js -> qa-match-assertion.js seam for real. Each module
