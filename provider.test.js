@@ -447,3 +447,44 @@ test('a lookup keyed by s3-client.js chunkKey resolves end-to-end in qa-match-as
   assert.equal(assertionResult.perQuestionBreakdown[0].citationMatches, true);
   assert.equal(assertionResult.namedScores.citationMatch, 1);
 });
+
+test('callApi collapses byte-identical chunk text cited twice into one copy, keeping genuinely different chunks', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    fetchReport: async () => ({
+      reportId: 'report-1',
+      summary: 's',
+      bucketId: 32023,
+      questions: [
+        {
+          predefinedQuestionId: 1,
+          answer: 'q1 cites <InTextCitation fileName="dup.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+        },
+        {
+          // A different (documentId, chunkId) pair whose grounded text is byte-identical —
+          // the same passage reached via a second citation, which must not be stored twice.
+          predefinedQuestionId: 2,
+          answer: 'q2 cites <InTextCitation fileName="dup.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+        },
+        {
+          predefinedQuestionId: 3,
+          answer: 'q3 cites <InTextCitation fileName="dup.pdf" documentId="doc-1" chunkId="chunk-3"></InTextCitation>',
+        },
+      ],
+    }),
+  });
+  mockS3Client(t, async () => new Map([
+    [s3Client.chunkKey('doc-1', 'chunk-1'), 'IDENTICAL PASSAGE'],
+    [s3Client.chunkKey('doc-1', 'chunk-2'), 'IDENTICAL PASSAGE'],
+    [s3Client.chunkKey('doc-1', 'chunk-3'), 'A GENUINELY DIFFERENT PASSAGE'],
+  ]));
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.citedDocumentsText['dup.pdf'], 'IDENTICAL PASSAGE\n\nA GENUINELY DIFFERENT PASSAGE');
+});

@@ -91,7 +91,10 @@ class FraudXClaimProvider {
         chunksByFileName.get(fileName).push(chunkText);
       }
       for (const [fileName, texts] of chunksByFileName) {
-        citedDocumentsText[fileName] = texts.join('\n\n').slice(0, DOCUMENT_TEXT_CHAR_LIMIT);
+        // Two questions citing the exact same chunk is intentional and stays intentional —
+        // but concatenating that chunk's text twice only spends truncation budget on a
+        // literal duplicate, so byte-identical strings collapse to one copy here.
+        citedDocumentsText[fileName] = [...new Set(texts)].join('\n\n').slice(0, DOCUMENT_TEXT_CHAR_LIMIT);
       }
     }
 
