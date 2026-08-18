@@ -245,22 +245,17 @@ SOURCE_BUCKET_ID=31804 \
 `/fraudx/api/v1/gx-bucket/list-buckets` handler recognizes as the "existing" bucket and serves an
 already-completed report for, which is what `scripts/build-tests-vars.js` fetches as ground truth.
 
-`SKIP_S3_GROUNDING=true` is required for the *freshly-created* bucket's side of this flow: the
-mock server hands that new claim a fake `bucketId` (`99999`) with no real S3 chunk-grounding file
-behind it, so `src/provider.js` skips its own S3 lookup entirely (`chunkGroundingData` is `null`,
-`citedDocumentsText` is `{}`, and `citationMatch` reports "no citation resolved" for every
-question). It does **not**, however, skip `scripts/build-tests-vars.js`'s own S3 fetch for the
-*existing* bucket (`SOURCE_BUCKET_ID`'s grounding file) during the `preeval` step — that fetch
-always runs, so this mock-server flow still isn't entirely infra-free: `AWS_S3_BUCKET_NAME` must
-be set (in `.env`, from the Setup step above), and the AWS SDK's own default credential chain
-needs *some* real, reachable AWS credentials (e.g. `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/
-`AWS_REGION` in `.env`, or an ambient AWS CLI profile) for `npm run generate:tests`/`npm run eval`
-to get past `preeval` — a missing bucket name fails immediately with a clear local error, but
-missing/invalid credentials fail with a raw AWS SDK error instead. Given valid credentials, a
-bucket with no matching grounding file for that bucket id resolves gracefully to `null` (no
-`expectedChunkText` on any question), which is fine for a local dry run. Never set
-`SKIP_S3_GROUNDING=true` in CI or against the real platform — it silently empties the
-grounding-based signals for the freshly-created bucket.
+`SKIP_S3_GROUNDING=true` covers both the *freshly-created* bucket's side and the *existing*
+bucket's side of this flow: the mock server hands the new claim a fake `bucketId` (`99999`) with
+no real S3 chunk-grounding file behind it, and `SKIP_S3_GROUNDING=true` tells both `src/provider.js`
+and `scripts/build-tests-vars.js` to skip their S3 lookups entirely. For the freshly-created bucket,
+`src/provider.js` skips its own S3 lookup (`chunkGroundingData` is `null`, `citedDocumentsText` is
+`{}`, and `citationMatch` reports "no citation resolved" for every question). For the existing
+bucket, `scripts/build-tests-vars.js` skips its S3 fetch during the `preeval` step, so this entire
+mock-server flow is entirely infra-free — zero AWS credentials needed. A bucket with no matching
+grounding file resolves gracefully to `null` (no `expectedChunkText` on any question), which is
+fine for a local dry run. Never set `SKIP_S3_GROUNDING=true` in CI or against the real platform —
+it silently empties the grounding-based signals for both the existing and freshly-created buckets.
 
 ## CI
 
