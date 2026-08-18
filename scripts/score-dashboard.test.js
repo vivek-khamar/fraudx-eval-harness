@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { scoreDashboard, computeAccuracy } = require('./score-dashboard');
+const { scoreDashboard, computeAccuracy, dashboardHasErrors } = require('./score-dashboard');
 
 test('computeAccuracy averages the four named scores as equal quarters', () => {
   const namedScores = {
@@ -332,4 +332,54 @@ test('scoreDashboard reports the bucketId of a claim whose provider call succeed
   // so the bucketId should still be reported even though this entry is an error overall.
   assert.equal(dashboards[0].bucketId, 31970);
   assert.match(dashboards[0].error, /RateLimitExhaustedError/);
+});
+
+test('dashboardHasErrors returns true when any entry has an error field', () => {
+  assert.equal(
+    dashboardHasErrors([{ bucketId: 31662, accuracy: 90 }, { bucketId: undefined, error: 'boom' }]),
+    true
+  );
+});
+
+test('dashboardHasErrors returns false when no entry has an error field', () => {
+  assert.equal(
+    dashboardHasErrors([{ bucketId: 31662, accuracy: 90 }, { bucketId: 31970, accuracy: 50 }]),
+    false
+  );
+});
+
+test('dashboardHasErrors returns false for an empty dashboard', () => {
+  assert.equal(dashboardHasErrors([]), false);
+});
+
+test('running score-dashboard.js as a CLI exits non-zero when the results file contains an error entry', () => {
+  const { execFileSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const errored = path.join(os.tmpdir(), 'cli-errored-results.json');
+  fs.writeFileSync(
+    errored,
+    JSON.stringify({
+      results: {
+        results: [
+          { error: 'Listing gx-buckets failed: 403 {"displayMessage":"You do not have permission to perform this action."}' },
+        ],
+      },
+    })
+  );
+
+  let status = 0;
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, 'score-dashboard.js'), errored], { stdio: 'pipe' });
+  } catch (err) {
+    status = err.status;
+  }
+  assert.equal(status, 1);
+});
+
+test('running score-dashboard.js as a CLI exits zero when every claim scored cleanly', () => {
+  const { execFileSync } = require('node:child_process');
+  const fixture = path.join(__dirname, '..', 'test', 'fixtures', 'results.sample.json');
+  // Throws if the child process exits non-zero.
+  execFileSync(process.execPath, [path.join(__dirname, 'score-dashboard.js'), fixture], { stdio: 'pipe' });
 });

@@ -45,14 +45,26 @@ function scoreDashboard(resultsFilePath) {
   });
 }
 
+function dashboardHasErrors(dashboard) {
+  return dashboard.some((entry) => entry.error !== undefined);
+}
+
 function main() {
   const resultsFilePath = process.argv[2] || path.join(process.cwd(), 'results.json');
   const dashboard = scoreDashboard(resultsFilePath);
   console.log(JSON.stringify(dashboard, null, 2));
+  // A claim erroring (e.g. a 403 from the FraudX API mid-run) must fail the CI job, not
+  // silently produce a green run with no report — npm run eval chains this script last-ish
+  // via `;` (not `&&`) so generate-pdf-report.js still gets a chance to write PDFs for any
+  // healthy claims in the same results.json before the overall command's exit code reflects
+  // this failure.
+  if (dashboardHasErrors(dashboard)) {
+    process.exitCode = 1;
+  }
 }
 
 if (require.main === module) {
   main();
 }
 
-module.exports = { scoreDashboard, computeAccuracy };
+module.exports = { scoreDashboard, computeAccuracy, dashboardHasErrors };

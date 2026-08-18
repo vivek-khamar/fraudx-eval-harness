@@ -506,3 +506,42 @@ test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s r
   assert.match(text, /MISMATCHED-QUESTION[\s\S]*?Citation Match: NO \(The cited passage is unrelated to the expected passage\.\)/);
   assert.match(text, /UNGRADED-QUESTION[\s\S]*?Citation Match: N\/A/);
 });
+
+test('running generate-pdf-report.js as a CLI exits non-zero when a claim in results.json errored, even though it still writes the PDF for a healthy claim in the same file', (t) => {
+  const { execFileSync } = require('node:child_process');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-cli-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const malformedClaim = sampleResultsFile().results.results[0];
+  malformedClaim.response.output.report.bucketId = 99999;
+  delete malformedClaim.gradingResult.namedScores;
+  fixture.results.results.unshift(malformedClaim);
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  let status = 0;
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, 'generate-pdf-report.js'), resultsPath, reportsDir], { stdio: 'pipe' });
+  } catch (err) {
+    status = err.status;
+  }
+
+  assert.equal(status, 1);
+  assert.ok(fs.existsSync(path.join(reportsDir, '32023')), 'the healthy claim\'s PDF should still be written');
+  assert.ok(!fs.existsSync(path.join(reportsDir, '99999')));
+});
+
+test('running generate-pdf-report.js as a CLI exits zero when every claim in results.json is healthy', (t) => {
+  const { execFileSync } = require('node:child_process');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-cli-clean-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile()));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  // Throws if the child process exits non-zero.
+  execFileSync(process.execPath, [path.join(__dirname, 'generate-pdf-report.js'), resultsPath, reportsDir], { stdio: 'pipe' });
+});

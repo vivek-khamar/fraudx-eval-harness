@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const PDFDocument = require('pdfkit');
 const { entitiesMatch, fraudRiskScoreMatches } = require('./metadata-match-assertion');
-const { computeAccuracy } = require('./score-dashboard');
+const { computeAccuracy, scoreDashboard, dashboardHasErrors } = require('./score-dashboard');
 
 const MARGIN = 50;
 const COLUMN_GAP = 10;
@@ -301,6 +301,13 @@ function main() {
         console.log(`Wrote ${filePath}`);
       }
       console.log(`Wrote ${written.length} report(s).`);
+      // A claim erroring (e.g. a 403 from the FraudX API mid-run) must fail the CI job, not
+      // silently produce a green run — even though PDFs for any other, healthy claims in the
+      // same results.json were still written above. This is the last step in npm run eval's
+      // `;`-chained pipeline, so its exit code becomes the whole command's exit code.
+      if (dashboardHasErrors(scoreDashboard(resultsFilePath))) {
+        process.exitCode = 1;
+      }
     })
     .catch((err) => {
       console.error(err);
