@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const PDFDocument = require('pdfkit');
-const { entitiesMatch, fraudRiskScoreMatches } = require('./metadata-match-assertion');
+const { entitiesMatch, fraudRiskScoreMatches } = require('../src/lib/metadata-match-assertion');
 const { computeAccuracy, scoreDashboard, dashboardHasErrors } = require('./score-dashboard');
 
 const MARGIN = 50;

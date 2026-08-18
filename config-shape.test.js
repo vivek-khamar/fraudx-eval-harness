@@ -12,10 +12,10 @@ const config = yaml.load(fs.readFileSync(configPath, 'utf8'));
 const testsVarsPath = path.join(__dirname, 'tests.vars.yaml');
 const testCases = yaml.load(fs.readFileSync(testsVarsPath, 'utf8'));
 
-test('config declares exactly one provider pointing at the local provider.js', () => {
+test('config declares exactly one provider pointing at the local src/provider.js', () => {
   assert.ok(Array.isArray(config.providers));
   assert.equal(config.providers.length, 1);
-  assert.equal(config.providers[0].id, 'file://provider.js');
+  assert.equal(config.providers[0].id, 'file://src/provider.js');
 });
 
 test('config reads the grading provider from GRADER_PROVIDER with no hardcoded default', () => {
@@ -85,7 +85,7 @@ test('config declares exactly three assertions: qa_match, report_quality, metada
 
   const qaMatch = asserts.find((a) => a.metric === 'qa_match');
   assert.equal(qaMatch.type, 'javascript');
-  assert.equal(qaMatch.value, 'file://scripts/qa-match-assertion.js');
+  assert.equal(qaMatch.value, 'file://src/lib/qa-match-assertion.js');
 
   const reportQuality = asserts.find((a) => a.metric === 'report_quality');
   assert.equal(reportQuality.type, 'llm-rubric');
@@ -94,5 +94,5 @@ test('config declares exactly three assertions: qa_match, report_quality, metada
 
   const metadataMatch = asserts.find((a) => a.metric === 'metadata_match');
   assert.equal(metadataMatch.type, 'javascript');
-  assert.equal(metadataMatch.value, 'file://scripts/metadata-match-assertion.js');
+  assert.equal(metadataMatch.value, 'file://src/lib/metadata-match-assertion.js');
 });

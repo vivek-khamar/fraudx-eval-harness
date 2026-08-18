@@ -3,7 +3,7 @@
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 // The one definition of the chunk-grounding lookup's key format. Exported because the
-// producer (this file) and both consumers (provider.js, scripts/qa-match-assertion.js)
+// producer (this file) and both consumers (provider.js, lib/qa-match-assertion.js)
 // have to agree on it exactly — a drift in any one of them wouldn't crash, it would
 // silently resolve zero citations everywhere.
 function chunkKey(documentId, chunkId) {

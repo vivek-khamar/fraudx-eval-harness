@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "pretest": "npm run generate:tests",
-    "test": "node --test provider.test.js s3-client.test.js config-shape.test.js scripts/score-dashboard.test.js scripts/qa-match-assertion.test.js scripts/metadata-match-assertion.test.js scripts/generate-pdf-report.test.js fraudx-client.test.js scripts/generate-tests-vars.test.js scripts/resolve-model-id.test.js scripts/apply-claim-config.test.js",
+    "test": "node --test src/provider.test.js src/s3-client.test.js src/fraudx-client.test.js config-shape.test.js src/lib/qa-match-assertion.test.js src/lib/metadata-match-assertion.test.js src/lib/extract-cited-file-names.test.js src/lib/resolve-model-id.test.js scripts/score-dashboard.test.js scripts/generate-pdf-report.test.js scripts/generate-tests-vars.test.js scripts/apply-claim-config.test.js",
     "generate:tests": "node scripts/generate-tests-vars.js",
     "preeval": "node scripts/apply-claim-config.js && npm run generate:tests",
     "eval:raw": "PROMPTFOO_CACHE_ENABLED=false promptfoo eval -c promptfooconfig.yaml --no-cache --max-concurrency 1 --output results.json",

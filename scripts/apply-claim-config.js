@@ -4,8 +4,8 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
-const fraudxClient = require('../fraudx-client');
-const resolveModelId = require('./resolve-model-id');
+const fraudxClient = require('../src/fraudx-client');
+const resolveModelId = require('../src/lib/resolve-model-id');
 
 // claimsdata/claims.json intentionally ships with no newClaimName/ingestionModelId/
 // processingModelId — a claim name can't be reused on the real platform, and the

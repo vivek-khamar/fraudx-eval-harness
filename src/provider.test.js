@@ -6,7 +6,7 @@ const promptfoo = require('promptfoo');
 const fraudxClient = require('./fraudx-client');
 const s3Client = require('./s3-client');
 const Provider = require('./provider');
-const qaMatchAssertion = require('./scripts/qa-match-assertion');
+const qaMatchAssertion = require('./lib/qa-match-assertion');
 
 function mockFraudxClient(t, overrides) {
   const originals = {};

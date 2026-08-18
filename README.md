@@ -5,12 +5,12 @@ document-ingestion + report pipeline and scores each against a human-verified an
 
 ## Design
 
-- **The provider is blind to the answer key.** `provider.js` only ever reads
+- **The provider is blind to the answer key.** `src/provider.js` only ever reads
   `context.vars.bucket`. It never touches
   `context.vars.expected`. This is enforced by a unit test in `provider.test.js` —
   if the pipeline's retrieval context could ever see the gold answers, "accuracy"
   would be meaningless.
-- **The eval triggers real work, nothing is simulated.** `provider.js` calls your
+- **The eval triggers real work, nothing is simulated.** `src/provider.js` calls your
   actual ingestion and processing endpoints and times them with its own stopwatch.
   If you have 20 golden claims, that's 20 full pipeline runs, not a mock. Each
   call is bounded by an `AbortSignal` timeout, configurable via
@@ -22,7 +22,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
   math, just the raw millisecond values.
 - **Accuracy is graded inside promptfoo**, via three assertions applied to every test case (one
   per golden claim): `qa_match`, `report_quality`, and `metadata_match`.
-  - `qa_match` (`javascript`, `scripts/qa-match-assertion.js`) computes up to three independent
+  - `qa_match` (`javascript`, `src/lib/qa-match-assertion.js`) computes up to three independent
     signals and reports them as named scores from a single assertion:
     - `riskStatusMatch` (deterministic): the fraction of that claim's predefined questions whose
       `riskStatus` exactly matches the gold `expectedRiskStatus`.
@@ -33,7 +33,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
     - `citationMatch` (LLM-graded, optional per question): a question in `claimsdata/claims.json`
       can set an `expectedChunkText` **array of strings** — one or more curated golden source
       passages for that question, each copied verbatim from the S3 chunk-grounding file
-      `provider.js` reads (see below). A question's answer can draw on several distinct source
+      `src/provider.js` reads (see below). A question's answer can draw on several distinct source
       chunks, so `expectedChunkText` can list more than one passage when that's the case. For
       every question that sets a non-empty array, `citationMatch` resolves that question's
       actually-cited `(documentId, chunkId)` pairs against `output.chunkGroundingData` and, for
@@ -76,11 +76,11 @@ document-ingestion + report pipeline and scores each against a human-verified an
     it; `pass` defaults to `score > 0` unless a `threshold` is set on the `qa_match` assert entry
     in `promptfooconfig.yaml`.
   - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary and
-    `citedDocumentsText` (fetched by `provider.js`, never from the answer key — see below) on
+    `citedDocumentsText` (fetched by `src/provider.js`, never from the answer key — see below) on
     completeness, clinical correctness, missing information, and groundedness (whether every claim
     in the summary is actually supported by the cited source text, with no hallucination) — a
     single 0–1 score covering all of that.
-  - `metadata_match` (`javascript`, `scripts/metadata-match-assertion.js`) checks the real report's
+  - `metadata_match` (`javascript`, `src/lib/metadata-match-assertion.js`) checks the real report's
     claim-level metadata against new `expected*` fields in `claimsdata/claims.json`, and reports two
     named scores:
     - `fraudRiskScoreMatch`: 1 if the real report's `fraudRiskScore` is within ±0.1 of the gold
@@ -94,15 +94,15 @@ document-ingestion + report pipeline and scores each against a human-verified an
   `acc = round(25×answerContentMatch + 25×report_quality + 25×fraudRiskScoreMatch + 25×entityFieldsMatch)`.
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
-- **`provider.js` fetches the text behind every citation via a separate S3 chunk-grounding file**
+- **`src/provider.js` fetches the text behind every citation via a separate S3 chunk-grounding file**
   (not the whole source bucket, and never based on the gold answer key) and attaches it as
   `output.citedDocumentsText`, capped at 15,000 characters per fileName (concatenating multiple
   cited chunks from the same file) — this is what `report_quality` checks the summary's claims
   against. If a citation's `(documentId, chunkId)` isn't found in the grounding file, or the
   grounding file itself is missing for that claim, it's skipped rather than failing the run.
-- **The provider recreates the claim from scratch on every run.** `provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
-- **`provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
-- **Citations are parsed out of free-text answers, then grounded via a separate S3 file.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="..." chunkId="...">` tags inside each answer's text, not a structured field. `scripts/extract-cited-file-names.js`'s `extractCitedCitationsFromText` is the one place that regex-extracts `fileName`, `documentId`, and `chunkId` from these tags. Neither `documentId` nor `chunkId` is stable across eval runs (both are assigned per-ingestion), so neither is ever compared directly — instead, `s3-client.js`'s `fetchChunkGroundingData(bucketId)` reads a separate per-claim JSON file FraudX writes to an S3 bucket (keyed `{bucketId}.json`), which maps each citation's `(documentId, chunkId)` pair to the exact verbatim chunk text GX grounded that citation in. The bucket name itself is not hardcoded — it comes from `AWS_S3_BUCKET_NAME`, since different environments read from different buckets. `provider.js` uses this to build `citedDocumentsText` and exposes the raw lookup as `output.chunkGroundingData` so `qa-match-assertion.js`'s `citationMatch` (per question) can reuse it without a second S3 fetch. Reading this bucket requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` in `.env` (see `.env.example`).
+- **The provider recreates the claim from scratch on every run.** `src/provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
+- **`src/provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `src/provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
+- **Citations are parsed out of free-text answers, then grounded via a separate S3 file.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="..." chunkId="...">` tags inside each answer's text, not a structured field. `src/lib/extract-cited-file-names.js`'s `extractCitedCitationsFromText` is the one place that regex-extracts `fileName`, `documentId`, and `chunkId` from these tags. Neither `documentId` nor `chunkId` is stable across eval runs (both are assigned per-ingestion), so neither is ever compared directly — instead, `src/s3-client.js`'s `fetchChunkGroundingData(bucketId)` reads a separate per-claim JSON file FraudX writes to an S3 bucket (keyed `{bucketId}.json`), which maps each citation's `(documentId, chunkId)` pair to the exact verbatim chunk text GX grounded that citation in. The bucket name itself is not hardcoded — it comes from `AWS_S3_BUCKET_NAME`, since different environments read from different buckets. `src/provider.js` uses this to build `citedDocumentsText` and exposes the raw lookup as `output.chunkGroundingData` so `src/lib/qa-match-assertion.js`'s `citationMatch` (per question) can reuse it without a second S3 fetch. Reading this bucket requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` in `.env` (see `.env.example`).
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
   `scripts/generate-pdf-report.js` reads the same `results.json` as the console dashboard and
   writes one PDF per claim that has a `bucketId` and passes its own renderability check, to
@@ -156,14 +156,14 @@ npm run eval
   claim name can't be reused on the real platform, and the model choice is a per-run
   decision, not a fixed answer-key fact), so the eval fails fast with a clear error if
   any of the three env vars is unset. The same check also requires `AWS_ACCESS_KEY_ID`,
-  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` (which `s3-client.js`
+  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` (which `src/s3-client.js`
   needs to read the chunk-grounding file), naming every missing variable in one error —
   so a run can't get hours into ingestion before discovering it can't reach S3. Setting
   `SKIP_S3_GROUNDING=true` skips that part of the check, since it skips the S3 lookup itself.
 - `npm run eval` runs `npm run eval:raw` (which runs `promptfoo eval` against
   `FRAUDX_ENDPOINT_URI`, grades the result, and writes `results.json`) and then
   `npm run score`. `--no-cache` is required — promptfoo caches provider responses
-  by default, and a cached "response" would mean `provider.js` never actually
+  by default, and a cached "response" would mean `src/provider.js` never actually
   calls your endpoint on a re-run, silently returning stale timing data that would
   make a real regression invisible. `--max-concurrency 1` runs multiple golden
   claims one at a time, not in parallel — the real platform has shared,
@@ -230,7 +230,7 @@ FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FR
 ```
 
 `SKIP_S3_GROUNDING=true` is required for this flow: the mock server hands back a fake `bucketId`
-that has no real S3 chunk-grounding file behind it, so `provider.js` skips the S3 lookup entirely
+that has no real S3 chunk-grounding file behind it, so `src/provider.js` skips the S3 lookup entirely
 (`chunkGroundingData` is `null`, `citedDocumentsText` is `{}`, and `citationMatch` reports "no
 citation resolved" for every question) and no AWS credentials are needed — it also relaxes the
 `preeval` step's fail-fast check for `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`AWS_S3_BUCKET_NAME`.

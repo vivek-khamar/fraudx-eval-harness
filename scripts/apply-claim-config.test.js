@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const fraudxClient = require('../fraudx-client');
+const fraudxClient = require('../src/fraudx-client');
 const { applyClaimConfig } = require('./apply-claim-config');
 
 function sampleClaims() {

@@ -461,7 +461,7 @@ test('qaMatchAssertion treats an empty-array expectedChunkText as NOT graded for
 });
 
 test('qaMatchAssertion correctly reads expectedChunkText when vars are built by the real generate-tests-vars.js pipeline, not hand-authored', async (t) => {
-  const { buildTestsVars } = require('./generate-tests-vars');
+  const { buildTestsVars } = require('../../scripts/generate-tests-vars');
   mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
 
   const rawClaim = {

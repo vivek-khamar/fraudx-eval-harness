@@ -2,7 +2,7 @@ prompts:
   - "{{bucket.sourceBucketId}}"
 
 providers:
-  - id: file://provider.js
+  - id: file://src/provider.js
 
 defaultTest:
   options:
@@ -13,7 +13,7 @@ defaultTest:
   assert:
     - type: javascript
       metric: qa_match
-      value: file://scripts/qa-match-assertion.js
+      value: file://src/lib/qa-match-assertion.js
     - type: llm-rubric
       metric: report_quality
       value: >-
@@ -27,7 +27,7 @@ defaultTest:
         score should reflect overall quality across all these criteria as a single 0-1 value.
     - type: javascript
       metric: metadata_match
-      value: file://scripts/metadata-match-assertion.js
+      value: file://src/lib/metadata-match-assertion.js
 
 # Test cases are generated from claimsdata/claims.json (see scripts/generate-tests-vars.js)
 # into tests.vars.yaml — add a new golden claim there, not here or in tests.vars.yaml directly.

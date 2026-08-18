@@ -2,7 +2,7 @@
 
 const fraudxClient = require('./fraudx-client');
 const s3Client = require('./s3-client');
-const { extractCitedCitationsFromText } = require('./scripts/extract-cited-file-names');
+const { extractCitedCitationsFromText } = require('./lib/extract-cited-file-names');
 
 const DOCUMENT_TEXT_CHAR_LIMIT = 15000;
 
