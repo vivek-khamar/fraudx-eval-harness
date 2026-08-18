@@ -168,6 +168,16 @@ test('fetchExistingBucketBaseline throws when bucketStatus is not SUCCESS', asyn
   );
 });
 
+test('fetchExistingBucketBaseline throws a clear, non-contradictory error when bucketStatus is SUCCESS but latestReportId is missing', async (t) => {
+  mockFraudxClient(t, {
+    getBucketDetails: async () => ({ bucketStatus: 'SUCCESS', latestReportId: null, claimCategoryId: 23, tags: [] }),
+  });
+  await assert.rejects(
+    () => fetchExistingBucketBaseline('https://fake', 31804, { token: 't', orgId: 1, userId: 1 }, 1000),
+    /Existing bucket 31804 has bucketStatus SUCCESS but no latestReportId/
+  );
+});
+
 test('fetchExistingBucketBaseline throws when the existing report has zero questions', async (t) => {
   mockFraudxClient(t, {
     getBucketDetails: async () => ({ bucketStatus: 'SUCCESS', latestReportId: 'report-1', claimCategoryId: 23, tags: [] }),

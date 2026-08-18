@@ -79,10 +79,16 @@ function buildExpectedQa(existingQuestions, existingGroundingData) {
 // report (fetchReport), and its own chunk-grounding data (S3).
 async function fetchExistingBucketBaseline(base, sourceBucketId, auth, timeoutMs) {
   const bucket = await fraudxClient.getBucketDetails(base, sourceBucketId, auth, timeoutMs);
-  if (bucket.bucketStatus !== 'SUCCESS' || !bucket.latestReportId) {
+  if (bucket.bucketStatus !== 'SUCCESS') {
     throw new Error(
       `Existing bucket ${sourceBucketId} has no completed report ` +
       `(bucketStatus: ${bucket.bucketStatus}) — it can't serve as ground truth.`
+    );
+  }
+  if (!bucket.latestReportId) {
+    throw new Error(
+      `Existing bucket ${sourceBucketId} has bucketStatus SUCCESS but no latestReportId yet ` +
+      `(its report hasn't finished generating) — it can't serve as ground truth.`
     );
   }
   const existingReport = await fraudxClient.fetchReport(base, bucket.latestReportId, auth, timeoutMs);
