@@ -4,6 +4,7 @@
 const http = require('node:http');
 
 const PORT = process.env.MOCK_PORT || 4001;
+const SOURCE_BUCKET_ID = process.env.SOURCE_BUCKET_ID || '31804';
 
 const server = http.createServer((req, res) => {
   let body = '';
@@ -116,9 +117,58 @@ const server = http.createServer((req, res) => {
     }
 
     if (req.method === 'POST' && req.url === '/fraudx/api/v1/gx-bucket/list-buckets') {
+      const bucketIdCriterion = (parsedBody.criteria || []).find((c) => c.column === 'bucketId');
+      const queriedBucketId = bucketIdCriterion?.values?.[0];
+      const isSourceBucket = queriedBucketId === String(SOURCE_BUCKET_ID);
+
       res.writeHead(200);
       res.end(JSON.stringify({
-        response: { content: [{ bucketId: 99999, bucketStatus: 'SUCCESS', latestReportId: 'mock-report-id' }] },
+        response: {
+          content: [
+            isSourceBucket
+              ? {
+                  bucketId: 31804,
+                  bucketStatus: 'SUCCESS',
+                  latestReportId: 'mock-existing-report-id',
+                  claimCategoryId: 23,
+                  tags: [
+                    {
+                      tagId: 3,
+                      tagKey: 'Client Update',
+                      tagStatus: 'ACTIVE',
+                      mandatory: true,
+                      tagValueId: 17,
+                      value: 'Test B',
+                    },
+                  ],
+                }
+              : { bucketId: 99999, bucketStatus: 'SUCCESS', latestReportId: 'mock-report-id' },
+          ],
+        },
+      }));
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/fraudx/api/v1/dashboard/reports/mock-existing-report-id') {
+      res.writeHead(200);
+      res.end(JSON.stringify({
+        response: {
+          reportId: 'mock-existing-report-id',
+          bucketId: 31804,
+          summary: 'Mock existing claim summary.',
+          fraudRiskScore: 0.5,
+          claimantName: 'Mock Claimant',
+          defendant: 'Mock Defendant',
+          insuranceFirm: 'Mock Insurance',
+          questions: [
+            {
+              predefinedQuestionId: 1,
+              question: 'Mock question?',
+              answer: 'Mock existing answer.',
+              riskStatus: 'UNSURE',
+            },
+          ],
+        },
       }));
       return;
     }
