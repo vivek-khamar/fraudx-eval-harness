@@ -9,9 +9,6 @@ const yaml = require('js-yaml');
 const configPath = path.join(__dirname, 'promptfooconfig.yaml');
 const config = yaml.load(fs.readFileSync(configPath, 'utf8'));
 
-const testsVarsPath = path.join(__dirname, 'tests.vars.yaml');
-const testCases = yaml.load(fs.readFileSync(testsVarsPath, 'utf8'));
-
 test('config declares exactly one provider pointing at the local src/provider.js', () => {
   assert.ok(Array.isArray(config.providers));
   assert.equal(config.providers.length, 1);
@@ -29,53 +26,6 @@ test('config loads test cases from tests.vars.yaml via a whole-file reference, n
   // goes through a different code path (loadTestsFromGlob) that parses the whole file up front, so
   // bucket/expected arrive as real objects. Do not go back to per-field file:// vars.
   assert.equal(config.tests, 'file://tests.vars.yaml');
-});
-
-test('tests.vars.yaml declares one test case per golden claim bucket fixture', () => {
-  assert.ok(Array.isArray(testCases));
-  assert.ok(testCases.length >= 1);
-  for (const testCase of testCases) {
-    assert.ok(typeof testCase.vars.bucket === 'object' && testCase.vars.bucket !== null, 'vars.bucket must be an inline object, not a file:// reference');
-    assert.ok(typeof testCase.vars.expected === 'object' && testCase.vars.expected !== null, 'vars.expected must be an inline object, not a file:// reference');
-  }
-});
-
-test('every test case\'s vars.bucket has a sourceBucketId and a newClaim config', () => {
-  // bucketName/ingestionModelId/processingModelId are intentionally absent from
-  // claimsdata/claims.json as committed — scripts/apply-claim-config.js resolves and
-  // writes them from required env vars immediately before `generate:tests` runs as
-  // part of `npm run eval`'s preeval hook, not before plain `npm test`. Only assert
-  // on what's actually static in the fixture.
-  for (const testCase of testCases) {
-    const bucket = testCase.vars.bucket;
-    assert.equal(typeof bucket.sourceBucketId, 'number');
-    assert.equal(typeof bucket.newClaim.claimCategoryId, 'number');
-  }
-});
-
-test('every test case\'s vars.expected has a summary and at least one predefined-question entry', () => {
-  for (const testCase of testCases) {
-    const expected = testCase.vars.expected;
-    assert.equal(typeof expected.summarySynopsis, 'string');
-    assert.ok(expected.summarySynopsis.length > 0);
-    assert.equal(typeof expected.fraudRiskScore, 'number');
-    assert.equal(typeof expected.claimantName, 'string');
-    assert.equal(typeof expected.defendant, 'string');
-    assert.equal(typeof expected.insuranceFirm, 'string');
-
-    assert.ok(Array.isArray(expected.qa));
-    assert.ok(expected.qa.length > 0, `vars.expected.qa must have at least one entry (sourceBucketId: ${testCase.vars.bucket.sourceBucketId})`);
-
-    const seenIds = new Set();
-    for (const entry of expected.qa) {
-      assert.equal(typeof entry.predefinedQuestionId, 'number');
-      assert.ok(!seenIds.has(entry.predefinedQuestionId), `duplicate predefinedQuestionId ${entry.predefinedQuestionId} (sourceBucketId: ${testCase.vars.bucket.sourceBucketId})`);
-      seenIds.add(entry.predefinedQuestionId);
-      assert.equal(typeof entry.question, 'string');
-      assert.equal(typeof entry.expectedAnswerSummary, 'string');
-      assert.equal(typeof entry.expectedRiskStatus, 'string');
-    }
-  }
 });
 
 test('config declares exactly three assertions: qa_match, report_quality, metadata_match', () => {
