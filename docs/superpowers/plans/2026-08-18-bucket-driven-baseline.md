@@ -551,10 +551,71 @@ git commit -m "chore: delete claims.json and its apply-claim-config/generate-tes
 
 ---
 
-### Task 4: Update `package.json`
+### Task 4: Update `package.json` and fix a stray reference to the deleted pipeline
+
+**Plan amendment (discovered during Task 3's execution, not caught by pre-flight review):**
+`src/lib/qa-match-assertion.test.js` has one integration test,
+`'qaMatchAssertion correctly reads expectedChunkText when vars are built by
+the real generate-tests-vars.js pipeline, not hand-authored'`, that does
+`require('../../scripts/generate-tests-vars')` — a cross-seam regression
+guard (same spirit as `provider.test.js`'s `'a lookup keyed by s3-client.js
+chunkKey resolves end-to-end in qa-match-assertion.js'` test) verifying
+`qa-match-assertion.js` correctly consumes vars built by the *real* pipeline,
+not just hand-typed fixtures. Task 3 deleted `generate-tests-vars.js`, so
+this test now fails with `Cannot find module`. This step rewrites it against
+`scripts/build-tests-vars.js`'s new functions/shape instead of deleting it —
+the cross-module contract it guards still matters.
 
 **Files:**
 - Modify: `package.json`
+- Modify: `src/lib/qa-match-assertion.test.js`
+
+- [ ] **Step 0: Rewrite the stale cross-pipeline test**
+
+Replace (starting at the line matching
+`test('qaMatchAssertion correctly reads expectedChunkText when vars are built by the real generate-tests-vars.js pipeline, not hand-authored', async (t) => {`
+through its closing `});`):
+
+```js
+test('qaMatchAssertion correctly reads expectedChunkText when vars are built by the real build-tests-vars.js pipeline, not hand-authored', async (t) => {
+  const { buildTestsVars, buildExpectedQa } = require('../../scripts/build-tests-vars');
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
+
+  const existingReport = {
+    summary: 'S',
+    fraudRiskScore: 0.5,
+    claimantName: 'X',
+    defendant: 'Y',
+    insuranceFirm: 'Z',
+    questions: [
+      { predefinedQuestionId: 1, question: 'Q1?', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>', riskStatus: 'RISK_DETECTED' },
+    ],
+  };
+  const existingGroundingData = new Map([['doc-1:chunk-1', 'gold passage text']]);
+  const expectedQa = buildExpectedQa(existingReport.questions, existingGroundingData);
+  const [{ vars }] = buildTestsVars({
+    sourceBucketId: 1, claimCategoryId: 1, tags: undefined, newClaimName: 'x',
+    ingestionModelId: 1, processingModelId: 9, existingReport, expectedQa,
+  });
+  const context = { vars, test: { assert: [{ metric: 'qa_match' }], options: {} } };
+  const output = {
+    report: {
+      questions: [
+        { predefinedQuestionId: 1, question: 'Q1?', riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
+      ],
+    },
+    chunkGroundingData: new Map([['doc-1:chunk-1', 'gold passage text']]),
+  };
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(result.namedScores.citationMatch, 1);
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
+});
+```
+
+Run: `node --test src/lib/qa-match-assertion.test.js`
+Expected: this test PASSES, and every other test in the file is unaffected.
 
 - [ ] **Step 1: Edit the scripts block**
 
