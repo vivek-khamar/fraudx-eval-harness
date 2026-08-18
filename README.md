@@ -1,18 +1,21 @@
 # fraudx-claim-eval
 
-A standalone promptfoo eval that runs one or more immutable "golden claims" through the FraudX
-document-ingestion + report pipeline and scores each against a human-verified answer key.
+A standalone promptfoo eval that re-runs an existing, already-processed FraudX claim (named by
+`SOURCE_BUCKET_ID`) through the document-ingestion + report pipeline against a freshly-created
+bucket, and scores that new run as a regression check — validated against the existing bucket's
+own report, not a hand-curated answer key.
 
 ## Design
 
 - **The provider is blind to the answer key.** `src/provider.js` only ever reads
   `context.vars.bucket`. It never touches
   `context.vars.expected`. This is enforced by a unit test in `provider.test.js` —
-  if the pipeline's retrieval context could ever see the gold answers, "accuracy"
+  if the pipeline's retrieval context could ever see the expected answers, "accuracy"
   would be meaningless.
 - **The eval triggers real work, nothing is simulated.** `src/provider.js` calls your
   actual ingestion and processing endpoints and times them with its own stopwatch.
-  If you have 20 golden claims, that's 20 full pipeline runs, not a mock. Each
+  Each `npm run eval` run performs one full pipeline run — creating and processing a
+  brand-new claim — against the bucket named by `SOURCE_BUCKET_ID`, not a mock. Each
   call is bounded by an `AbortSignal` timeout, configurable via
   `FRAUDX_HTTP_TIMEOUT_MS` (default 900000ms), so a hung endpoint can't block
   the eval forever.
@@ -20,51 +23,58 @@ document-ingestion + report pipeline and scores each against a human-verified an
   just fields on the provider's output, already timed by the time promptfoo sees
   them. `scripts/score-dashboard.js` reports them as-is — no budget or percentage
   math, just the raw millisecond values.
-- **Accuracy is graded inside promptfoo**, via three assertions applied to every test case (one
-  per golden claim): `qa_match`, `report_quality`, and `metadata_match`.
+- **Accuracy is graded inside promptfoo**, via three assertions applied to the run's one test
+  case — built by `scripts/build-tests-vars.js` from the bucket named by `SOURCE_BUCKET_ID`:
+  `qa_match`, `report_quality`, and `metadata_match`.
   - `qa_match` (`javascript`, `src/lib/qa-match-assertion.js`) computes up to three independent
     signals and reports them as named scores from a single assertion:
     - `riskStatusMatch` (deterministic): the fraction of that claim's predefined questions whose
-      `riskStatus` exactly matches the gold `expectedRiskStatus`.
+      `riskStatus` exactly matches the expected `expectedRiskStatus` (the existing bucket's own
+      report's `riskStatus` for that question).
     - `answerContentMatch` (LLM-graded): one rubric call PER QUESTION (not one batched call for
-      all of a claim's questions) that judges that question's actual answer text against its gold
-      `expectedAnswerSummary` for semantic (not exact-wording) match, and returns the fraction of
-      questions that match.
-    - `citationMatch` (LLM-graded, optional per question): a question in `claimsdata/claims.json`
-      can set an `expectedChunkText` **array of strings** — one or more curated golden source
-      passages for that question, each copied verbatim from the S3 chunk-grounding file
-      `src/provider.js` reads (see below). A question's answer can draw on several distinct source
-      chunks, so `expectedChunkText` can list more than one passage when that's the case. For
-      every question that sets a non-empty array, `citationMatch` resolves that question's
-      actually-cited `(documentId, chunkId)` pairs against `output.chunkGroundingData` and, for
-      **every entry** in `expectedChunkText`, asks the grader whether **any** resolved chunk's
-      text semantically supports that entry (exact wording doesn't matter, meaning does) — one
-      grader call per (expected passage × resolved citation) pair tried, on top of the existing
-      per-question answer-content call. `citationMatches` for the question is `true` only if
-      **every** entry in `expectedChunkText` finds a supporting resolved chunk — a single unmatched
-      entry fails the whole question, even if the others matched; `citationMatchReason` reports the
-      unmatched entries' own reasons when any fail, or all entries' reasons joined with `" | "`
-      when every entry matches (and just that one entry's own reason, unwrapped, for the common
-      single-entry case). A citation that doesn't resolve (missing grounding data, or that specific
-      chunk absent from it) is skipped rather than counted as a mismatch by itself; if *no* citation
+      all of a claim's questions) that judges that question's actual answer text against its
+      expected `expectedAnswerSummary` (the existing bucket's own answer text for that question)
+      for semantic (not exact-wording) match, and returns the fraction of questions that match.
+    - `citationMatch` (LLM-graded, optional per question): for each question in the existing
+      bucket's own report, `scripts/build-tests-vars.js` extracts that question's own cited
+      `(documentId, chunkId)` pairs from its answer text and resolves each to its exact verbatim
+      text via the existing bucket's own S3 chunk-grounding file (fetched directly by
+      `src/s3-client.js`'s `fetchChunkGroundingData`, the same lookup `src/provider.js` uses for
+      the freshly-created bucket — see below) — populating that question's `expectedChunkText`
+      **array of strings** automatically, not by hand. A question's answer can draw on several
+      distinct source chunks, so `expectedChunkText` can list more than one passage when that's
+      the case; a question whose cited chunks don't resolve gets no `expectedChunkText` at all.
+      For every question that ends up with a non-empty array, `citationMatch` resolves that
+      question's actually-cited `(documentId, chunkId)` pairs (from the freshly-processed
+      bucket's own report) against `output.chunkGroundingData` and, for **every entry** in
+      `expectedChunkText`, asks the grader whether **any** resolved chunk's text semantically
+      supports that entry (exact wording doesn't matter, meaning does) — one grader call per
+      (expected passage × resolved citation) pair tried, on top of the existing per-question
+      answer-content call. `citationMatches` for the question is `true` only if **every** entry in
+      `expectedChunkText` finds a supporting resolved chunk — a single unmatched entry fails the
+      whole question, even if the others matched; `citationMatchReason` reports the unmatched
+      entries' own reasons when any fail, or all entries' reasons joined with `" | "` when every
+      entry matches (and just that one entry's own reason, unwrapped, for the common single-entry
+      case). A citation that doesn't resolve (missing grounding data, or that specific chunk
+      absent from it) is skipped rather than counted as a mismatch by itself; if *no* citation
       resolves at all, the question fails with a fixed reason and no grader call is made. Neither
       `documentId` nor `chunkId` is ever compared directly — both are per-ingestion and change every
-      run — only the chunk *text* they resolve to is compared. Questions that don't set
-      `expectedChunkText` (or set it to an empty array) are excluded from this fraction. If *no*
-      question in a claim sets it, `citationMatch` is `undefined` for that claim (not `0`).
-      `citationMatch` is reported for visibility (in `namedScores` and the PDF) but is not part of
-      the accuracy formula below.
+      run — only the chunk *text* they resolve to is compared. Questions with no `expectedChunkText`
+      are excluded from this fraction. If *no* question in the existing bucket's report has one,
+      `citationMatch` is `undefined` (not `0`). `citationMatch` is reported for visibility (in
+      `namedScores` and the PDF) but is not part of the accuracy formula below.
 
-    Questions are matched between the golden `expected.qa` and the real report by `question` text,
-    not `predefinedQuestionId` — like `documentId`/`chunkId`, that id is minted fresh by the
-    platform on every claim-processing run, so the same claim re-ingested twice gets two
-    different sets of ids for the same questions. `predefinedQuestionId` is still carried through
-    `perQuestionBreakdown` (sourced from the golden side) for readability, not for matching.
+    Questions are matched between the existing bucket's `expected.qa` and the freshly-processed
+    bucket's real report by `question` text, not `predefinedQuestionId` — like `documentId`/
+    `chunkId`, that id is minted fresh by the platform on every claim-processing run, so the same
+    claim re-ingested twice gets two different sets of ids for the same questions.
+    `predefinedQuestionId` is still carried through `perQuestionBreakdown` (sourced from the
+    existing bucket's own report) for readability, not for matching.
 
     The assertion also returns a `perQuestionBreakdown` array — one entry per question with its
     `predefinedQuestionId`, `question`, `actualAnswer`, `riskStatus` (the real report's raw value,
     used only for sorting the PDF's question order), `riskStatusMatches` (boolean — whether that
-    `riskStatus` equals the gold `expectedRiskStatus` for this specific question), `matches`
+    `riskStatus` equals the expected `expectedRiskStatus` for this specific question), `matches`
     (boolean), `reason` (the grader's per-question reasoning), `actualCitedFileNames` (deduplicated
     fileNames actually cited, for visibility), `citationMatches` (boolean, or `undefined` if that
     question wasn't graded for citations), and `citationMatchReason` (the citation grader's own
@@ -75,16 +85,16 @@ document-ingestion + report pipeline and scores each against a human-verified an
     `citationMatch` as a third term whenever at least one question in the claim was graded for
     it; `pass` defaults to `score > 0` unless a `threshold` is set on the `qa_match` assert entry
     in `promptfooconfig.yaml`.
-  - `report_quality` (`llm-rubric`) judges the report's summary against the gold summary and
-    `citedDocumentsText` (fetched by `src/provider.js`, never from the answer key — see below) on
-    completeness, clinical correctness, missing information, and groundedness (whether every claim
-    in the summary is actually supported by the cited source text, with no hallucination) — a
-    single 0–1 score covering all of that.
+  - `report_quality` (`llm-rubric`) judges the report's summary against the existing bucket's own
+    summary and `citedDocumentsText` (fetched by `src/provider.js`, never from the expected/
+    answer-key data — see below) on completeness, clinical correctness, missing information, and
+    groundedness (whether every claim in the summary is actually supported by the cited source
+    text, with no hallucination) — a single 0–1 score covering all of that.
   - `metadata_match` (`javascript`, `src/lib/metadata-match-assertion.js`) checks the real report's
-    claim-level metadata against new `expected*` fields in `claimsdata/claims.json`, and reports two
-    named scores:
-    - `fraudRiskScoreMatch`: 1 if the real report's `fraudRiskScore` is within ±0.1 of the gold
-      `expectedFraudRiskScore`, else 0.
+    claim-level metadata against `expected*` fields that `scripts/build-tests-vars.js` populates
+    directly from the existing bucket's own report, and reports two named scores:
+    - `fraudRiskScoreMatch`: 1 if the real report's `fraudRiskScore` is within ±0.1 of the existing
+      bucket's own `expectedFraudRiskScore`, else 0.
     - `entityFieldsMatch`: the fraction of `claimantName`, `defendant`, and `insuranceFirm` that
       match their `expected*` counterpart exactly, case- and whitespace-insensitively.
   `scripts/score-dashboard.js` (via its exported `computeAccuracy(namedScores)`, also reused by
@@ -95,12 +105,12 @@ document-ingestion + report pipeline and scores each against a human-verified an
   The grading provider is read directly from `GRADER_PROVIDER` in `.env` — there's no hardcoded
   default, so `GRADER_PROVIDER` must be set. That provider's own API key must also be set.
 - **`src/provider.js` fetches the text behind every citation via a separate S3 chunk-grounding file**
-  (not the whole source bucket, and never based on the gold answer key) and attaches it as
+  (not the whole source bucket, and never based on the existing bucket's own report) and attaches it as
   `output.citedDocumentsText`, capped at 15,000 characters per fileName (concatenating multiple
   cited chunks from the same file) — this is what `report_quality` checks the summary's claims
   against. If a citation's `(documentId, chunkId)` isn't found in the grounding file, or the
   grounding file itself is missing for that claim, it's skipped rather than failing the run.
-- **The provider recreates the claim from scratch on every run.** `src/provider.js` logs in, downloads every document from the golden claim's frozen source bucket, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
+- **The provider recreates the claim from scratch on every run.** `src/provider.js` logs in, downloads every document from the bucket named by `SOURCE_BUCKET_ID`, creates a brand-new claim/bucket, and re-uploads them there — this untimed setup step exists because the FraudX platform processes per-claim, and each eval run needs its own fresh claim to submit against.
 - **`src/provider.js` times ingestion and report-generation as two independent phases, and the dashboard reports them independently too.** With `skipGxProcess: false`, each document's own GX ingestion completes individually during the upload loop (`fileMetrics.completedFiles` reaches 5/5 before claim-level processing is ever triggered), so `src/provider.js` times that whole per-document loop — start of the first document to end of the last — as `ingestion.timeMs`. Separately, it times `triggerClaimProcessing` (the trigger) to `waitForClaimProcessing` resolving (`bucketStatus` reaching `SUCCESS`, i.e. the report is ready) as `processing.timeMs`. `dashboard.ingestionTime` and `dashboard.processingTime` are just those two raw values converted from milliseconds to seconds, unchanged and uncombined otherwise.
 - **Citations are parsed out of free-text answers, then grounded via a separate S3 file.** The real report embeds citations as inline `<InTextCitation fileName="..." documentId="..." chunkId="...">` tags inside each answer's text, not a structured field. `src/lib/extract-cited-file-names.js`'s `extractCitedCitationsFromText` is the one place that regex-extracts `fileName`, `documentId`, and `chunkId` from these tags. Neither `documentId` nor `chunkId` is stable across eval runs (both are assigned per-ingestion), so neither is ever compared directly — instead, `src/s3-client.js`'s `fetchChunkGroundingData(bucketId)` reads a separate per-claim JSON file FraudX writes to an S3 bucket (keyed `{bucketId}.json`), which maps each citation's `(documentId, chunkId)` pair to the exact verbatim chunk text GX grounded that citation in. The bucket name itself is not hardcoded — it comes from `AWS_S3_BUCKET_NAME`, since different environments read from different buckets. `src/provider.js` uses this to build `citedDocumentsText` and exposes the raw lookup as `output.chunkGroundingData` so `src/lib/qa-match-assertion.js`'s `citationMatch` (per question) can reuse it without a second S3 fetch. Reading this bucket requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` in `.env` (see `.env.example`).
 - **`npm run score` (and therefore `npm run eval`) also writes a PDF report per scoreable claim.**
@@ -134,8 +144,8 @@ document-ingestion + report pipeline and scores each against a human-verified an
 
 ```bash
 npm install
-cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, CLAIM_NAME/
-                        # INGESTION_MODEL_NAME/PROCESSING_MODEL_NAME, and
+cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, SOURCE_BUCKET_ID,
+                        # CLAIM_NAME/INGESTION_MODEL_NAME/PROCESSING_MODEL_NAME, and
                         # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION/AWS_S3_BUCKET_NAME
                         # (needed to read the S3 chunk-grounding file — see .env.example)
 ```
@@ -146,40 +156,40 @@ cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, CLAIM_N
 npm run eval
 ```
 
-- Before anything else, `npm run eval`'s `preeval` hook runs
-  `scripts/apply-claim-config.js`, which reads `CLAIM_NAME`, `INGESTION_MODEL_NAME`,
-  and `PROCESSING_MODEL_NAME` from your environment, resolves the two model
-  `displayName`s to platform IDs (via `POST /fraudx/api/v1/models/search`), and writes
-  `newClaimName`/`ingestionModelId`/`processingModelId` into every claim in
-  `claimsdata/claims.json` — then regenerates `tests.vars.yaml` from the updated file.
-  `claimsdata/claims.json` deliberately ships with no default for these three fields (a
-  claim name can't be reused on the real platform, and the model choice is a per-run
-  decision, not a fixed answer-key fact), so the eval fails fast with a clear error if
-  any of the three env vars is unset. The same check also requires `AWS_ACCESS_KEY_ID`,
-  `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_S3_BUCKET_NAME` (which `src/s3-client.js`
-  needs to read the chunk-grounding file), naming every missing variable in one error —
-  so a run can't get hours into ingestion before discovering it can't reach S3. Setting
-  `SKIP_S3_GROUNDING=true` skips that part of the check, since it skips the S3 lookup itself.
+- Before anything else, `npm run eval`'s `preeval` hook runs `scripts/build-tests-vars.js`,
+  which fails fast with a clear error if `FRAUDX_ENDPOINT_URI` or `SOURCE_BUCKET_ID` is unset,
+  or if the bucket named by `SOURCE_BUCKET_ID` has no completed report (or a report with no
+  questions) to serve as ground truth. It then logs in, fetches that existing bucket's own
+  report and its own S3 chunk-grounding file, resolves `INGESTION_MODEL_NAME`/
+  `PROCESSING_MODEL_NAME` to platform model ids (via `POST /fraudx/api/v1/models/search`),
+  and writes the result — the new claim's `bucketName` set to `CLAIM_NAME` — as a single
+  generated test case into `tests.vars.yaml`. There's no single upfront check that names every
+  missing env var at once the way the old claims.json-based setup did: an unset
+  `INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME` still fails during this same `preeval` step
+  (no model has a blank `displayName`, so the lookup throws before any real work starts), but
+  an unset `CLAIM_NAME` isn't caught locally at all — it only surfaces once the pipeline calls
+  the FraudX API to create a claim with it. AWS credentials (`AWS_ACCESS_KEY_ID`/
+  `AWS_SECRET_ACCESS_KEY`/`AWS_REGION`) aren't explicitly validated either; only
+  `AWS_S3_BUCKET_NAME` gets a dedicated check, in `src/s3-client.js`. Note that this
+  `preeval` step's own S3 chunk-grounding fetch (for the *existing* bucket) always runs — it
+  is not skipped by `SKIP_S3_GROUNDING`, which only governs `src/provider.js`'s separate S3
+  lookup for the *freshly-created* bucket (see below and the mock-server walkthrough).
 - `npm run eval` runs `npm run eval:raw` (which runs `promptfoo eval` against
   `FRAUDX_ENDPOINT_URI`, grades the result, and writes `results.json`) and then
   `npm run score`. `--no-cache` is required — promptfoo caches provider responses
   by default, and a cached "response" would mean `src/provider.js` never actually
   calls your endpoint on a re-run, silently returning stale timing data that would
-  make a real regression invisible. `--max-concurrency 1` runs multiple golden
-  claims one at a time, not in parallel — the real platform has shared,
-  account-level ingestion limits (e.g. a cap on concurrently-ingesting files),
-  so running claims concurrently risks them contending with each other for that
-  same quota.
-- `npm run score` reads `results.json` and prints one dashboard object per claim:
+  make a real regression invisible. `--max-concurrency 1` ensures test cases run
+  one at a time, not in parallel (currently there's just the one, per
+  `SOURCE_BUCKET_ID`) — the real platform has shared, account-level ingestion
+  limits (e.g. a cap on concurrently-ingesting files), so running claims
+  concurrently risks them contending with each other for that same quota.
+- `npm run score` reads `results.json` and prints one dashboard object per test case — under
+  this bucket-driven design that's always exactly one entry, for the single `SOURCE_BUCKET_ID`
+  being validated:
 
 ```json
 [
-  {
-    "bucketId": 31662,
-    "ingestionTime": 71,
-    "processingTime": 184,
-    "accuracy": 94
-  },
   {
     "bucketId": 31970,
     "ingestionTime": 53,
@@ -189,16 +199,17 @@ npm run eval
 ]
 ```
 
-`bucketId` identifies the real, newly-created FraudX bucket this run produced for that golden
-claim (read from `output.report.bucketId`, i.e. only available once the report was actually
-fetched) — not the golden claim's frozen source bucket. If the provider call failed before a
-report was ever fetched (e.g. claim creation itself failed), that entry has no `bucketId` at all;
-the `error` text is the only record of what happened.
+`bucketId` identifies the real, newly-created FraudX bucket this run produced (read from
+`output.report.bucketId`, i.e. only available once the report was actually fetched) — not the
+bucket named by `SOURCE_BUCKET_ID`, which is the existing bucket being validated against, not
+the one this run creates. If the provider call failed before a report was ever fetched (e.g.
+claim creation itself failed), that entry has no `bucketId` at all; the `error` text is the only
+record of what happened.
 
 If a claim's provider call errored (e.g. a platform outage, a bad model ID for the current
 environment) or its accuracy score came out `NaN`, that claim's entry has an `error` field
-instead of the three numbers — it does not stop the other claims in the same run from being
-scored. A claim can still be fully scored even if `results.json` marks it as errored overall —
+instead of the three numbers — it does not stop any other entries in the same `results.json`
+from being scored. A claim can still be fully scored even if `results.json` marks it as errored overall —
 promptfoo sets that top-level error to a human-readable summary whenever any assertion's own
 `pass` verdict is false (e.g. `report_quality`'s LLM judge deciding a summary is incomplete),
 which doesn't mean the pipeline or scoring actually failed.
@@ -223,18 +234,33 @@ whole pipeline run end to end:
 
 ```bash
 npm run mock-server                        # terminal 1 — leave running
-FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock \
+SOURCE_BUCKET_ID=31804 \
+  FRAUDX_ENDPOINT_URI=http://localhost:4001 FRAUDX_LOGIN_EMAIL=mock@example.com FRAUDX_LOGIN_PASSWORD=mock \
   CLAIM_NAME=mock-claim INGESTION_MODEL_NAME=mock-ingestion-model PROCESSING_MODEL_NAME=mock-processing-model \
   SKIP_S3_GROUNDING=true \
   npm run eval   # terminal 2
 ```
 
-`SKIP_S3_GROUNDING=true` is required for this flow: the mock server hands back a fake `bucketId`
-that has no real S3 chunk-grounding file behind it, so `src/provider.js` skips the S3 lookup entirely
-(`chunkGroundingData` is `null`, `citedDocumentsText` is `{}`, and `citationMatch` reports "no
-citation resolved" for every question) and no AWS credentials are needed — it also relaxes the
-`preeval` step's fail-fast check for `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`AWS_S3_BUCKET_NAME`.
-Never set it in CI or against the real platform — it silently empties the grounding-based signals.
+`SOURCE_BUCKET_ID=31804` matches `test/mock-server.js`'s own default — that's the bucket id its
+`/fraudx/api/v1/gx-bucket/list-buckets` handler recognizes as the "existing" bucket and serves an
+already-completed report for, which is what `scripts/build-tests-vars.js` fetches as ground truth.
+
+`SKIP_S3_GROUNDING=true` is required for the *freshly-created* bucket's side of this flow: the
+mock server hands that new claim a fake `bucketId` (`99999`) with no real S3 chunk-grounding file
+behind it, so `src/provider.js` skips its own S3 lookup entirely (`chunkGroundingData` is `null`,
+`citedDocumentsText` is `{}`, and `citationMatch` reports "no citation resolved" for every
+question). It does **not**, however, skip `scripts/build-tests-vars.js`'s own S3 fetch for the
+*existing* bucket (`SOURCE_BUCKET_ID`'s grounding file) during the `preeval` step — that fetch
+always runs, so this mock-server flow still isn't entirely infra-free: `AWS_S3_BUCKET_NAME` must
+be set (in `.env`, from the Setup step above), and the AWS SDK's own default credential chain
+needs *some* real, reachable AWS credentials (e.g. `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/
+`AWS_REGION` in `.env`, or an ambient AWS CLI profile) for `npm run generate:tests`/`npm run eval`
+to get past `preeval` — a missing bucket name fails immediately with a clear local error, but
+missing/invalid credentials fail with a raw AWS SDK error instead. Given valid credentials, a
+bucket with no matching grounding file for that bucket id resolves gracefully to `null` (no
+`expectedChunkText` on any question), which is fine for a local dry run. Never set
+`SKIP_S3_GROUNDING=true` in CI or against the real platform — it silently empties the
+grounding-based signals for the freshly-created bucket.
 
 ## CI
 
@@ -260,15 +286,17 @@ Dispatching it prompts for a `mode`:
   of `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` matches `GRADER_PROVIDER`'s value (both are passed
   through; an unused one is simply ignored).
 
-  Dispatching `full-eval` also requires three inputs — `newClaimName`, `ingestionModelName`,
-  `processingModelName` — since `claimsdata/claims.json` has no default claim name or model IDs
-  (a claim name can't be reused on the real platform, and the model choice is a per-run
-  decision). These feed `CLAIM_NAME`/`INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME`, which
-  `npm run eval`'s `preeval` hook (`scripts/apply-claim-config.js`) reads and resolves before
-  every run, local or CI — leaving any of the three blank fails the run immediately with a
-  clear error naming what's missing. `ingestionModelName`/`processingModelName` must be the
-  exact `displayName` from the FraudX platform's model catalog (e.g. `openai-gpt-5.4`) — plain
-  model names collide across providers, so `displayName` (which embeds the provider) is what's
+  Dispatching `full-eval` also takes four workflow inputs — `sourceBucketId`, `newClaimName`,
+  `ingestionModelName`, `processingModelName` — which feed `SOURCE_BUCKET_ID`/`CLAIM_NAME`/
+  `INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME`. Only `sourceBucketId` is marked `required` in
+  the workflow schema itself, so it can't be dispatched blank; the other three default to an
+  empty string in the schema, but `npm run eval`'s `preeval` hook (`scripts/build-tests-vars.js`)
+  still fails fast on a blank `ingestionModelName`/`processingModelName` (no model has a blank
+  `displayName`, so resolving it throws before any real work starts) — a blank `newClaimName`
+  isn't caught locally at all, though, and only surfaces once the pipeline calls the FraudX API
+  to create a claim with it. `ingestionModelName`/`processingModelName` must be the exact
+  `displayName` from the FraudX platform's model catalog (e.g. `openai-gpt-5.4`) — plain model
+  names collide across providers, so `displayName` (which embeds the provider) is what's
   matched, exactly, not fuzzily.
 
 ## Known environment limitations
@@ -287,15 +315,17 @@ code — it is not caused by anything in this repo. Upgrading promptfoo
 `^0.122.0`, and a real end-to-end run against that version no longer
 reproduces the bug.
 
-## Adding another golden claim
+## Choosing which bucket to validate against
 
-`claimsdata/claims.json` is an array — add another entry to it (following the
-existing shape) and re-run `npm run generate:tests` (this also happens
-automatically before `npm test`/`npm run eval`) to regenerate `tests.vars.yaml`
-with one promptfoo test case per claim. Each claim is scored independently;
-there's no cap on how many can run in the same suite. Keep in mind the FraudX
-eval doc's own intent for this kind of fixture — *"a single, versioned,
-immutable claim... keep it small, fixed, and fast — it is the safety net, not
-a full test plan"* — so favor a handful of curated claims over a large,
-slow-to-run set; a much bigger benchmark/regression run is still a different
-thing than this per-change smoke test.
+There's no claims file to hand-edit anymore. `SOURCE_BUCKET_ID` alone selects what a run
+validates against — point it at a different existing, already-processed bucket (in `.env`
+locally, or via the `sourceBucketId` workflow-dispatch input in CI) and `scripts/build-tests-vars.js`
+fetches that bucket's own report and S3 chunk-grounding file fresh, live, on the next
+`npm run generate:tests`/`npm run eval` (there's nothing else to regenerate or keep in sync).
+Each run validates exactly one bucket this way — `tests.vars.yaml` always ends up with a single
+generated test case, not an array to add more entries to. Keep in mind the FraudX eval doc's own
+intent for this kind of check — *"a single, versioned, immutable claim... keep it small, fixed,
+and fast — it is the safety net, not a full test plan"* — the safety net here is "does the
+freshly-processed bucket still match what the existing bucket's own report already says", not a
+hand-curated answer key; a much bigger benchmark/regression run across many buckets is still a
+different thing than this per-change smoke test.
