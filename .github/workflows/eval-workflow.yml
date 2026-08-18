@@ -76,10 +76,3 @@ jobs:
           name: reports
           path: reports/**
           if-no-files-found: ignore
-      - name: Upload raw eval results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: results-json
-          path: results.json
-          if-no-files-found: ignore
