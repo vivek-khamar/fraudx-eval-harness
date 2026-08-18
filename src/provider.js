@@ -39,24 +39,37 @@ class FraudXClaimProvider {
       pollTimeoutMs: Number(process.env.FRAUDX_UPLOAD_POLL_TIMEOUT_MS || 3600000),
     };
     const ingestionStart = Date.now();
+    const failedDocuments = [];
     await Promise.all(sourceDocs.map(async (doc) => {
-      const contentType = fraudxClient.contentTypeForExtension(doc.extension);
-      const downloadUrl = await fraudxClient.getDownloadUrl(base, doc.gxMasterId, auth, timeoutMs);
-      const bytes = await fraudxClient.downloadFile(downloadUrl, timeoutMs);
-      // Requested here, immediately before use, rather than batched for all documents upfront —
-      // presigned upload URLs go stale within minutes on the real platform. Each document still
-      // requests its own URL right before uploading; only the documents now run concurrently
-      // with each other instead of waiting their turn.
-      const uploads = await fraudxClient.requestUploadUrls(base, auth, [{ fileName: doc.fileName, contentType }], newBucketId, timeoutMs);
-      const upload = uploads.find((u) => u.fileName === doc.fileName);
-      if (!upload) {
-        throw new Error(`No upload URL returned for file "${doc.fileName}"`);
+      try {
+        const contentType = fraudxClient.contentTypeForExtension(doc.extension);
+        const downloadUrl = await fraudxClient.getDownloadUrl(base, doc.gxMasterId, auth, timeoutMs);
+        const bytes = await fraudxClient.downloadFile(downloadUrl, timeoutMs);
+        // Requested here, immediately before use, rather than batched for all documents upfront —
+        // presigned upload URLs go stale within minutes on the real platform. Each document still
+        // requests its own URL right before uploading; only the documents now run concurrently
+        // with each other instead of waiting their turn.
+        const uploads = await fraudxClient.requestUploadUrls(base, auth, [{ fileName: doc.fileName, contentType }], newBucketId, timeoutMs);
+        const upload = uploads.find((u) => u.fileName === doc.fileName);
+        if (!upload) {
+          throw new Error(`No upload URL returned for file "${doc.fileName}"`);
+        }
+        await fraudxClient.uploadFile(upload.uploadUrl, bytes, contentType, timeoutMs);
+        await fraudxClient.triggerJobProcessing(base, auth, [upload.jobId], timeoutMs);
+        await fraudxClient.waitForDocumentUpload(base, newBucketId, upload.jobId, auth, timeoutMs, uploadPollConfig);
+      } catch (err) {
+        console.error(`Skipping document "${doc.fileName}": ${err.message}`);
+        failedDocuments.push({ fileName: doc.fileName, error: err.message });
       }
-      await fraudxClient.uploadFile(upload.uploadUrl, bytes, contentType, timeoutMs);
-      await fraudxClient.triggerJobProcessing(base, auth, [upload.jobId], timeoutMs);
-      await fraudxClient.waitForDocumentUpload(base, newBucketId, upload.jobId, auth, timeoutMs, uploadPollConfig);
     }));
     const ingestionTimeMs = Date.now() - ingestionStart;
+
+    if (failedDocuments.length === sourceDocs.length) {
+      throw new Error(
+        `All ${sourceDocs.length} document(s) failed to copy into the new bucket — nothing was ingested: ` +
+        failedDocuments.map((f) => `${f.fileName}: ${f.error}`).join('; ')
+      );
+    }
 
     const processingStart = Date.now();
     await fraudxClient.triggerClaimProcessing(base, auth, newBucketId, newClaim.processingModelId, timeoutMs);
@@ -117,6 +130,7 @@ class FraudXClaimProvider {
         report,
         citedDocumentsText,
         chunkGroundingData,
+        failedDocuments,
       },
     };
   }

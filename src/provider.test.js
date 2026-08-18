@@ -268,6 +268,69 @@ test('callApi throws when no upload URL matches a source document\'s fileName', 
   await assert.rejects(() => provider.callApi('FX-GOLD-5K-v1', fakeContext()), /No upload URL returned for file "a\.pdf"/);
 });
 
+test('callApi continues copying other documents when one document\'s pipeline fails, recording it in output.failedDocuments', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    listBucketDocuments: async () => [
+      { gxMasterId: 1, fileName: 'a.pdf', extension: 'pdf' },
+      { gxMasterId: 2, fileName: 'b.pdf', extension: 'pdf' },
+    ],
+    requestUploadUrls: async (base, auth, files) => {
+      if (files[0].fileName === 'b.pdf') {
+        throw new Error('upload URL service unavailable');
+      }
+      return [{ fileName: files[0].fileName, jobId: 1, uploadUrl: 'https://s3.example/put' }];
+    },
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.deepEqual(result.output.failedDocuments, [{ fileName: 'b.pdf', error: 'upload URL service unavailable' }]);
+});
+
+test('callApi throws when every document fails to copy, without triggering claim processing', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  let triggerClaimProcessingCalled = false;
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    requestUploadUrls: async () => {
+      throw new Error('upload URL service unavailable');
+    },
+    triggerClaimProcessing: async () => {
+      triggerClaimProcessingCalled = true;
+      return 'task-1';
+    },
+  });
+
+  const provider = new Provider();
+  await assert.rejects(
+    () => provider.callApi('FX-GOLD-5K-v1', fakeContext()),
+    /All 1 document\(s\) failed to copy into the new bucket/
+  );
+  assert.equal(triggerClaimProcessingCalled, false, 'claim processing must not be triggered on an empty bucket');
+});
+
+test('callApi sets output.failedDocuments to an empty array when every document copies successfully', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, happyPathMocks([]));
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.deepEqual(result.output.failedDocuments, []);
+});
+
 test('callApi fetches grounding text only for citations that resolve in the S3 chunk-grounding file, truncated to 15000 chars', async (t) => {
   process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
