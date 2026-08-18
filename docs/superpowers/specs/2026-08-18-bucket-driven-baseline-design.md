@@ -24,6 +24,13 @@ absolute truth. The three existing assertions (`qa_match`, `report_quality`,
 `metadata_match`) keep their exact current scoring mechanics — only where
 `context.vars.expected` comes from changes.
 
+Bundled into this same design: since a real existing bucket's documents are
+now the copy source (rather than a small, hand-picked fixture set), one
+document transiently failing to copy into the fresh bucket shouldn't abort
+the whole comparison — `src/provider.js`'s document-copy loop changes to
+skip and record a failed document instead of aborting the run, unless every
+document fails.
+
 ## Decisions
 
 ### Single bucket per run
@@ -114,6 +121,72 @@ Confirms:
   Not a hard failure.
 - **Existing bucket has `tags` missing/empty**: not an error at all — the
   new bucket is created without a `tags` field (optional, see above).
+
+### Per-document ingestion resilience (`src/provider.js`)
+
+Today, `callApi`'s document-copy loop is a bare `Promise.all` over
+`sourceDocs` — the moment any single document's download, upload-URL
+request, upload, or `waitForDocumentUpload` throws, the whole `Promise.all`
+rejects and `callApi` throws, aborting the entire run even though the other
+documents might have copied fine. With a real existing bucket as the source
+(potentially several documents, any one of which can transiently fail), one
+flaky document shouldn't sink the whole comparison.
+
+Each per-document pipeline gets its own try/catch; a failure is logged and
+recorded, not rethrown, so `Promise.all` still resolves once every document
+has either succeeded or failed:
+
+```js
+const ingestionStart = Date.now();
+const failedDocuments = [];
+await Promise.all(sourceDocs.map(async (doc) => {
+  try {
+    const contentType = fraudxClient.contentTypeForExtension(doc.extension);
+    const downloadUrl = await fraudxClient.getDownloadUrl(base, doc.gxMasterId, auth, timeoutMs);
+    const bytes = await fraudxClient.downloadFile(downloadUrl, timeoutMs);
+    const uploads = await fraudxClient.requestUploadUrls(base, auth, [{ fileName: doc.fileName, contentType }], newBucketId, timeoutMs);
+    const upload = uploads.find((u) => u.fileName === doc.fileName);
+    if (!upload) {
+      throw new Error(`No upload URL returned for file "${doc.fileName}"`);
+    }
+    await fraudxClient.uploadFile(upload.uploadUrl, bytes, contentType, timeoutMs);
+    await fraudxClient.triggerJobProcessing(base, auth, [upload.jobId], timeoutMs);
+    await fraudxClient.waitForDocumentUpload(base, newBucketId, upload.jobId, auth, timeoutMs, uploadPollConfig);
+  } catch (err) {
+    console.error(`Skipping document "${doc.fileName}": ${err.message}`);
+    failedDocuments.push({ fileName: doc.fileName, error: err.message });
+  }
+}));
+const ingestionTimeMs = Date.now() - ingestionStart;
+
+if (failedDocuments.length === sourceDocs.length) {
+  throw new Error(
+    `All ${sourceDocs.length} document(s) failed to copy into the new bucket — nothing was ingested: ` +
+    failedDocuments.map((f) => `${f.fileName}: ${f.error}`).join('; ')
+  );
+}
+```
+
+- **Zero successes → fail fast.** If every document failed, triggering claim
+  processing on an empty bucket would produce meaningless noise, not a
+  useful (if degraded) comparison — same "fail fast and loud" posture used
+  elsewhere in this design.
+- **At least one success → proceed.** Claim processing is triggered with
+  whatever subset of documents made it in.
+- **Surfaced, not silent.** `output` gains `failedDocuments` — always an
+  array (empty when nothing failed, matching the shape convention other
+  always-present arrays like `perQuestionBreakdown` already use, so
+  consumers don't need an `?? []` check). `scripts/generate-pdf-report.js`
+  renders a "Failed documents" section listing `fileName`/`error` pairs when
+  the array is non-empty, so a reviewer comparing the new report to the
+  existing one can see "this document didn't make it in" instead of
+  wondering why an answer that depended on it changed. The section is
+  omitted entirely (not printed empty) when `failedDocuments` is `[]`,
+  keeping today's reports visually unchanged for the common case.
+- This is orthogonal to (and does not replace or duplicate) `fetchWithRetry`,
+  which already retries `downloadFile` internally — this change is about not
+  aborting the whole run after those retries are exhausted for one document,
+  not about adding new retry layers to the other calls in this loop.
 
 ### New script: `scripts/build-tests-vars.js`
 
@@ -362,9 +435,23 @@ block.
     `existingGroundingData` through.
   - `existingGroundingData === null` (S3 file missing): every question ends
     up with no `expectedChunkText`, not a thrown error.
-- `qa-match-assertion.test.js`, `metadata-match-assertion.test.js`,
-  `provider.test.js`: **unchanged** — they exercise `context.vars.expected`/
-  `context.vars.bucket` shapes that don't change.
+- `qa-match-assertion.test.js`, `metadata-match-assertion.test.js`:
+  **unchanged** — they exercise `context.vars.expected` shapes that don't
+  change.
+- `provider.test.js`: mostly unchanged (still exercises `context.vars.bucket`
+  unchanged), plus new tests for the ingestion-resilience change: one failing
+  document (`getDownloadUrl`/`downloadFile`/`requestUploadUrls`/`uploadFile`/
+  `triggerJobProcessing`/`waitForDocumentUpload` — pick one call site to
+  reject) doesn't stop the others from completing, and shows up in
+  `output.failedDocuments`; `output.failedDocuments` is `[]` when nothing
+  failed; every document failing throws instead of proceeding to
+  `triggerClaimProcessing` (assert `triggerClaimProcessing` was never
+  called).
+- `scripts/generate-pdf-report.test.js`: a claim with a non-empty
+  `failedDocuments` renders a "Failed documents" section listing each
+  `fileName`/`error`; a claim with an empty (or absent, for
+  backward-compatibility with old `results.json` files) `failedDocuments`
+  renders no such section.
 - `config-shape.test.js`: keeps only the promptfooconfig.yaml-shape tests
   described above; no longer touches the filesystem for `tests.vars.yaml`.
 
