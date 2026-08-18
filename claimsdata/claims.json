@@ -74,7 +74,8 @@
         "expectedAnswer": "RISK DETECTED: Multiple medical providers associated with the plaintiff — Englington Medical P.C., and Pain Physicians NY — are listed at the same address: 9525 Jamaica Avenue, Woodhaven, NY 11421.",
         "expectedRiskStatus": "RISK_DETECTED",
         "expectedChunkText": [
-          "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [7]:\nHEALTH INSURANCE CLAIM FORM. Billing Provider Info: ENGLINTON MEDICAL P.C, 9525 JAMAICA AVENUE, WOODHAVEN, NY 11421, (718) 718-441-4070. Service Facility Location: ENGLINTON MEDICAL P.C, 9525 JAMAICA AVENUE, WOODHAVEN NY 11421."
+          "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part10.pdf' and pages [7]:\nHEALTH INSURANCE CLAIM FORM. Billing Provider Info: ENGLINTON MEDICAL P.C, 9525 JAMAICA AVENUE, WOODHAVEN, NY 11421, (718) 718-441-4070. Service Facility Location: ENGLINTON MEDICAL P.C, 9525 JAMAICA AVENUE, WOODHAVEN NY 11421.",
+          "The following text excerpt is from a document named '20240301+-+0001-27+Ex.+J-1.6+Compl.+Med+Record+-+Claimant+A+-+FS_Part2-15-20.pdf' and pages [5]:\nPain Physicians NY. Center for Complete Neuromuscular, Spine & Joint Medicine. 780 8th Ave Suite 2A, New York, NY 10036. Tel: (212)757-0222. Test Date: April 29, 2021. ELECTROMYOGRAPHY AND NERVE CONDUCTION VELOCITY REPORT UPPER EXTREMITIES."
         ]
       },
       {
@@ -224,7 +225,8 @@
         "expectedAnswer": "RISK DETECTED: The plaintiff's original description of the injury did not involve conditions covered by Labor Law §241, but a subsequent version of the account added facts making the statute applicable.",
         "expectedRiskStatus": "RISK_DETECTED",
         "expectedChunkText": [
-          "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1]:\nJanuary 05, 2024. Santoshi Billakota, MD. Claimant: Jose Briones. As per your request, I examined the above-referenced claimant, Jose Briones, for the purpose of an independent neurologic evaluation on January 05, 2024. HISTORY AS PROVIDED BY CLAIMANT: Mr. Briones is a 38-year-old male who was involved in a work-related incident on March 16, 2020. The claimant states that while working as a Construction Worker he fell backwards approximately 9 feet while reaching for a bucket."
+          "The following text excerpt is from a document named 'JOSE+BRIONES+WC+FILE+COMPLETE_part18-26-36.pdf' and pages [1]:\nJanuary 05, 2024. Santoshi Billakota, MD. Claimant: Jose Briones. As per your request, I examined the above-referenced claimant, Jose Briones, for the purpose of an independent neurologic evaluation on January 05, 2024. HISTORY AS PROVIDED BY CLAIMANT: Mr. Briones is a 38-year-old male who was involved in a work-related incident on March 16, 2020. The claimant states that while working as a Construction Worker he fell backwards approximately 9 feet while reaching for a bucket.",
+          "The following text excerpt is from a document named 'PL65606_Skyline+920+Broadway+%28Cabrera+%29_Photo+Bundle.PDF' and pages [9]:\nSite inspection photo log documenting the roof work area at Skyline 920 Broadway in NY, taken April 19, 2021 for insurance claim file PL65606. The photos depict an outrigger column and tension cables installed on the rooftop, near an exit door, confirming a construction/roof-work site consistent with elevated work conditions."
         ]
       },
       {
