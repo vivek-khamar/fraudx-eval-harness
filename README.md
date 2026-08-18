@@ -171,9 +171,10 @@ npm run eval
   the FraudX API to create a claim with it. AWS credentials (`AWS_ACCESS_KEY_ID`/
   `AWS_SECRET_ACCESS_KEY`/`AWS_REGION`) aren't explicitly validated either; only
   `AWS_S3_BUCKET_NAME` gets a dedicated check, in `src/s3-client.js`. Note that this
-  `preeval` step's own S3 chunk-grounding fetch (for the *existing* bucket) always runs — it
-  is not skipped by `SKIP_S3_GROUNDING`, which only governs `src/provider.js`'s separate S3
-  lookup for the *freshly-created* bucket (see below and the mock-server walkthrough).
+  `preeval` step's own S3 chunk-grounding fetch (for the *existing* bucket) is gated by
+  `SKIP_S3_GROUNDING`, exactly like `src/provider.js`'s separate S3 lookup for the
+  *freshly-created* bucket (see below and the mock-server walkthrough) — setting it skips
+  both fetches.
 - `npm run eval` runs `npm run eval:raw` (which runs `promptfoo eval` against
   `FRAUDX_ENDPOINT_URI`, grades the result, and writes `results.json`) and then
   `npm run score`. `--no-cache` is required — promptfoo caches provider responses
