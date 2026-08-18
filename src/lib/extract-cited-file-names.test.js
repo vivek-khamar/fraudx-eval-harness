@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { extractCitedCitationsFromText } = require('./extract-cited-file-names');
+const { extractCitedCitationsFromText, formatAnswerWithCitations } = require('./extract-cited-file-names');
 
 test('extractCitedCitationsFromText returns the decoded fileName, documentId, and chunkId from a single citation tag', () => {
   const text = 'see <InTextCitation fileName="JOSE%2BBRIONES.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>';
@@ -70,4 +70,64 @@ test('extractCitedCitationsFromText is reusable across multiple calls without le
   assert.deepEqual(first, [{ fileName: 'one.pdf', documentId: 'd1', chunkId: 'c1' }]);
   assert.deepEqual(second, []);
   assert.deepEqual(third, [{ fileName: 'two.pdf', documentId: 'd2', chunkId: 'c2' }]);
+});
+
+test('formatAnswerWithCitations replaces each citation tag with a numbered [n] marker, in order of first appearance', () => {
+  const text = [
+    'First point <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>.',
+    'Second point <InTextCitation fileName="b.pdf" documentId="doc-2" chunkId="chunk-2"></InTextCitation>.',
+  ].join(' ');
+
+  const { cleanedText, legend } = formatAnswerWithCitations(text);
+
+  assert.equal(
+    cleanedText,
+    'First point [1]. Second point [2].'
+  );
+  assert.deepEqual(legend, [
+    { number: 1, fileName: 'a.pdf' },
+    { number: 2, fileName: 'b.pdf' },
+  ]);
+});
+
+test('formatAnswerWithCitations reuses the same marker number when the same (documentId, chunkId) is cited twice', () => {
+  const text = [
+    'See <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and again <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>.',
+  ].join(' ');
+
+  const { cleanedText, legend } = formatAnswerWithCitations(text);
+
+  assert.equal(cleanedText, 'See [1] and again [1].');
+  assert.deepEqual(legend, [{ number: 1, fileName: 'a.pdf' }]);
+});
+
+test('formatAnswerWithCitations removes a tag missing fileName, documentId, or chunkId with no marker left behind', () => {
+  const text = 'See <InTextCitation documentId="doc-1" chunkId="chunk-1"></InTextCitation> for details.';
+
+  const { cleanedText, legend } = formatAnswerWithCitations(text);
+
+  assert.equal(cleanedText, 'See  for details.');
+  assert.deepEqual(legend, []);
+});
+
+test('formatAnswerWithCitations returns the text unchanged and an empty legend when there are no citation tags', () => {
+  const { cleanedText, legend } = formatAnswerWithCitations('No sources found to answer this query!');
+  assert.equal(cleanedText, 'No sources found to answer this query!');
+  assert.deepEqual(legend, []);
+});
+
+test('formatAnswerWithCitations returns the input unchanged (and an empty legend) for null, undefined, or empty-string input, without throwing', () => {
+  assert.deepEqual(formatAnswerWithCitations(null), { cleanedText: null, legend: [] });
+  assert.deepEqual(formatAnswerWithCitations(undefined), { cleanedText: undefined, legend: [] });
+  assert.deepEqual(formatAnswerWithCitations(''), { cleanedText: '', legend: [] });
+});
+
+test('formatAnswerWithCitations is reusable across multiple calls without leaking regex state', () => {
+  const first = formatAnswerWithCitations('<InTextCitation fileName="one.pdf" documentId="d1" chunkId="c1"></InTextCitation>');
+  const second = formatAnswerWithCitations('no citations here');
+  const third = formatAnswerWithCitations('<InTextCitation fileName="two.pdf" documentId="d2" chunkId="c2"></InTextCitation>');
+  assert.equal(first.cleanedText, '[1]');
+  assert.equal(second.cleanedText, 'no citations here');
+  assert.equal(third.cleanedText, '[1]');
 });
