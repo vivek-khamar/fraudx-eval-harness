@@ -6,7 +6,7 @@ const yaml = require('js-yaml');
 
 function buildTestsVars(claims) {
   if (!Array.isArray(claims)) {
-    throw new Error('testdata/claims.json must contain an array of claim objects');
+    throw new Error('claimsdata/claims.json must contain an array of claim objects');
   }
   return claims.map((claim) => ({
     vars: {
@@ -53,7 +53,7 @@ function generateTestsVars(claimsPath, outputPath) {
 }
 
 function main() {
-  const claimsPath = process.argv[2] || path.join(__dirname, '..', 'testdata', 'claims.json');
+  const claimsPath = process.argv[2] || path.join(__dirname, '..', 'claimsdata', 'claims.json');
   const outputPath = process.argv[3] || path.join(__dirname, '..', 'tests.vars.yaml');
   generateTestsVars(claimsPath, outputPath);
   console.log(`Generated ${outputPath} from ${claimsPath}`);

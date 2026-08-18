@@ -7,12 +7,12 @@ const path = require('node:path');
 const fraudxClient = require('../fraudx-client');
 const resolveModelId = require('./resolve-model-id');
 
-// testdata/claims.json intentionally ships with no newClaimName/ingestionModelId/
+// claimsdata/claims.json intentionally ships with no newClaimName/ingestionModelId/
 // processingModelId — a claim name can't be reused on the real platform, and the
 // ingestion/processing model is a deliberate per-run choice, not a fixed answer-key
 // fact. Every eval run, local or CI, must supply CLAIM_NAME/INGESTION_MODEL_NAME/
 // PROCESSING_MODEL_NAME and this step resolves+writes them before generate:tests
-// reads testdata/claims.json.
+// reads claimsdata/claims.json.
 async function applyClaimConfig(claimsPath) {
   const claimName = process.env.CLAIM_NAME || '';
   const ingestionModelName = process.env.INGESTION_MODEL_NAME || '';
@@ -58,7 +58,7 @@ async function applyClaimConfig(claimsPath) {
 }
 
 function main() {
-  const claimsPath = process.argv[2] || path.join(__dirname, '..', 'testdata', 'claims.json');
+  const claimsPath = process.argv[2] || path.join(__dirname, '..', 'claimsdata', 'claims.json');
   applyClaimConfig(claimsPath).catch((err) => {
     console.error(err);
     process.exitCode = 1;

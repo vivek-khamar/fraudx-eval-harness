@@ -30,7 +30,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
       all of a claim's questions) that judges that question's actual answer text against its gold
       `expectedAnswerSummary` for semantic (not exact-wording) match, and returns the fraction of
       questions that match.
-    - `citationMatch` (LLM-graded, optional per question): a question in `testdata/claims.json`
+    - `citationMatch` (LLM-graded, optional per question): a question in `claimsdata/claims.json`
       can set an `expectedChunkText` string — a curated golden source passage for that question,
       copied verbatim from the S3 chunk-grounding file `provider.js` reads (see below). For every
       question that sets it, `citationMatch` resolves that question's actually-cited
@@ -73,7 +73,7 @@ document-ingestion + report pipeline and scores each against a human-verified an
     in the summary is actually supported by the cited source text, with no hallucination) — a
     single 0–1 score covering all of that.
   - `metadata_match` (`javascript`, `scripts/metadata-match-assertion.js`) checks the real report's
-    claim-level metadata against new `expected*` fields in `testdata/claims.json`, and reports two
+    claim-level metadata against new `expected*` fields in `claimsdata/claims.json`, and reports two
     named scores:
     - `fraudRiskScoreMatch`: 1 if the real report's `fraudRiskScore` is within ±0.1 of the gold
       `expectedFraudRiskScore`, else 0.
@@ -143,8 +143,8 @@ npm run eval
   and `PROCESSING_MODEL_NAME` from your environment, resolves the two model
   `displayName`s to platform IDs (via `POST /fraudx/api/v1/models/search`), and writes
   `newClaimName`/`ingestionModelId`/`processingModelId` into every claim in
-  `testdata/claims.json` — then regenerates `tests.vars.yaml` from the updated file.
-  `testdata/claims.json` deliberately ships with no default for these three fields (a
+  `claimsdata/claims.json` — then regenerates `tests.vars.yaml` from the updated file.
+  `claimsdata/claims.json` deliberately ships with no default for these three fields (a
   claim name can't be reused on the real platform, and the model choice is a per-run
   decision, not a fixed answer-key fact), so the eval fails fast with a clear error if
   any of the three env vars is unset. The same check also requires `AWS_ACCESS_KEY_ID`,
@@ -253,7 +253,7 @@ Dispatching it prompts for a `mode`:
   through; an unused one is simply ignored).
 
   Dispatching `full-eval` also requires three inputs — `newClaimName`, `ingestionModelName`,
-  `processingModelName` — since `testdata/claims.json` has no default claim name or model IDs
+  `processingModelName` — since `claimsdata/claims.json` has no default claim name or model IDs
   (a claim name can't be reused on the real platform, and the model choice is a per-run
   decision). These feed `CLAIM_NAME`/`INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME`, which
   `npm run eval`'s `preeval` hook (`scripts/apply-claim-config.js`) reads and resolves before
@@ -281,7 +281,7 @@ reproduces the bug.
 
 ## Adding another golden claim
 
-`testdata/claims.json` is an array — add another entry to it (following the
+`claimsdata/claims.json` is an array — add another entry to it (following the
 existing shape) and re-run `npm run generate:tests` (this also happens
 automatically before `npm test`/`npm run eval`) to regenerate `tests.vars.yaml`
 with one promptfoo test case per claim. Each claim is scored independently;

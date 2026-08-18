@@ -75,7 +75,7 @@ test('buildTestsVars maps multiple claims in order', () => {
 });
 
 test('buildTestsVars throws a clear error when the input is not an array', () => {
-  assert.throws(() => buildTestsVars({ notAnArray: true }), /testdata\/claims\.json must contain an array of claim objects/);
+  assert.throws(() => buildTestsVars({ notAnArray: true }), /claimsdata\/claims\.json must contain an array of claim objects/);
 });
 
 test('generateTestsVars reads claims.json and writes a re-parseable tests.vars.yaml', (t) => {
