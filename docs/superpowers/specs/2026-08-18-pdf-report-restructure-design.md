@@ -116,31 +116,164 @@ Then, in order: the existing per-question breakdown (reformatted below),
 the existing claim-metadata table (unchanged content, just moved under this
 section's heading), the existing overall-summary paragraph (unchanged).
 
-### Q&A breakdown formatting improvements
+### Q&A breakdown: real bordered table row + a new per-question score
 
-Current per-question layout is six separate label/value lines (`Risk Status
-Match`, `Citation Match`, `Match`, `Answer`, `Reason`, plus the question
-heading). Two changes, both purely cosmetic (no data change):
+Per your calls: **literal table**, but only for the short, bounded fields —
+Answer and Reason stay full-width paragraphs below the row, in the same
+bordered block, so a long answer overflowing onto a new page can't tear
+sibling columns apart (the exact bug the original 2026-08-13 design avoided
+by going flowing-paragraph in the first place; this keeps that safety for
+the genuinely long fields while making the short fields a real table).
 
-1. **Risk status as a colored tag next to the question number**, using the
-   question's actual `riskStatus` (not just whether it matched) — e.g.
-   `Q3: {question}` followed immediately by a small colored
-   `[RISK DETECTED]` / `[UNSURE]` / `[RISK NOT DETECTED]` tag (red / gray /
-   green respectively) on the same line. This is new *visible* information
-   (today's PDF never shows what the actual risk status *was*, only whether
-   it matched the expected one) — surfaced for free from data already in
-   `perQuestionBreakdown`.
-2. **Collapse the three match indicators onto one line**, color-coded
-   instead of plain "YES"/"NO" text on separate lines:
-   `Risk Status Match: YES   Citation Match: NO (reason)   Answer Match: YES`
-   — green for YES, red for NO, gray for N/A — reusing
-   `formatCitationMatch`'s existing reason-rendering unchanged. This cuts
-   three lines to one per question, leaving more room for the Answer/Reason
-   paragraphs that actually vary in length.
+Per-question layout becomes:
 
-`Answer:` and `Reason:` stay as full-width flowing paragraphs exactly as
-today (no change — they're already the right shape for variable-length
-text).
+1. **Question heading** — `Q{n}: {question}`, unchanged, full width.
+2. **A 4-column bordered row** — `Risk Status | Score | Risk Match |
+   Citation Match` — built with `drawTableRow`, the same helper the
+   claim-metadata table already uses for exactly this safe case (short,
+   single-line, bounded values, never at risk of the pagination-tearing
+   bug). `drawTableRow` itself gains one small addition: an optional
+   per-column `colors` array (`{ bold, colors }`, alongside its existing
+   `{ bold }` option) — `colors[i]` sets `doc.fillColor` before drawing
+   column `i`'s text, reset to `'black'` after, for the 3 of these 4 columns
+   that need color. The claim-metadata table's own existing calls are
+   unaffected (they simply don't pass `colors`, same as they don't pass
+   `bold: true` today except for the header row).
+   - **Risk Status**: the question's actual `riskStatus` (`RISK DETECTED` /
+     `UNSURE` / `RISK NOT DETECTED`), colored red / gray / green. New
+     *visible* information — today's PDF never shows what the risk status
+     actually *was*, only whether it matched the expected one.
+   - **Score**: the new per-question numeric score (below), formatted as
+     `{score}%`, uncolored (a plain number, not a pass/fail signal).
+   - **Risk Match**: `riskStatusMatches`, colored green `YES` / red `NO`.
+   - **Citation Match**: `formatCitationMatch(entry)`'s existing output
+     (`YES` / `NO (reason)` / `N/A`), colored green/red/gray respectively,
+     reason text unchanged.
+3. **Answer** (with cleaned-up citations, see below) and **Reason** —
+   full-width paragraphs, exactly as today, directly below the row.
+
+### New per-question numeric score (`scripts/qa-match-assertion.js`)
+
+There's currently no per-question numeric score anywhere — only three
+independent booleans (`riskStatusMatches`, `answerContentMatch`'s `matches`,
+`citationMatches`). Per your choice, the grader itself now returns a real
+0-100 confidence score alongside its existing boolean verdict, in the same
+call (no new LLM call, no added latency/cost):
+
+```js
+function buildQuestionGradingPrompt(question, actualAnswer) {
+  return [
+    `Question: ${question.question}`,
+    `Expected answer: ${question.expectedAnswerSummary}`,
+    `Model answer: ${actualAnswer}`,
+    '',
+    "Does the model answer's content and reasoning semantically match the expected answer above",
+    '(exact wording does not matter, meaning does)? Also rate how well the model answer captures',
+    'the expected answer on a 0-100 scale (100 = perfect semantic match, 0 = completely wrong or',
+    'missing). Respond with only a JSON object, no other text:',
+    '{"matches": boolean, "score": number, "reason": string}.',
+  ].join('\n');
+}
+```
+
+**`parseGraderVerdict` treats `score` as optional**, not required — this
+function is shared with the citation-text grader call
+(`matchesAnyResolvedChunk`'s `buildChunkTextMatchPrompt`), whose prompt does
+*not* ask for a score and never will (it's a different judgment — "does
+this passage support this citation," not "how good is this answer"). Making
+`score` unconditionally required would break every citation-match grader
+response, which has no `score` field at all.
+
+```js
+function parseGraderVerdict(responseOutput) {
+  const text = typeof responseOutput === 'string' ? responseOutput : JSON.stringify(responseOutput);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error(`Could not find a JSON object in grader response: ${text}`);
+  const parsed = JSON.parse(match[0]);
+  if (typeof parsed.matches !== 'boolean' || typeof parsed.reason !== 'string') {
+    throw new Error(`Grader response JSON missing matches/reason fields: ${text}`);
+  }
+  if (parsed.score !== undefined && (typeof parsed.score !== 'number' || Number.isNaN(parsed.score) || parsed.score < 0 || parsed.score > 100)) {
+    throw new Error(`Grader response score must be a number in [0,100] when present: ${text}`);
+  }
+  return { matches: parsed.matches, reason: parsed.reason, score: parsed.score };
+}
+```
+
+`qaMatchAssertion`'s per-question loop carries `score` into
+`perQuestionBreakdown` alongside the existing fields — no other change to
+that function's body.
+
+**Decision: additive, not a replacement.** `answerContentMatch` (the
+aggregate) keeps its exact current computation —
+`perQuestionBreakdown.filter((v) => v.matches).length / perQuestionBreakdown.length`,
+still boolean-based. The new `score` is a richer per-question display value
+only; it does not feed `answerContentMatch`, `computeAccuracy`, or any
+threshold/pass-fail logic. Changing the aggregate to average raw scores
+instead of counting booleans would ripple into CI-gating behavior (pass/fail
+thresholds, `computeAccuracy`'s weighting) — out of scope here, since the
+ask was a report column, not a scoring-methodology change.
+
+### Citation link formatting
+
+Today, `Answer:` renders `entry.actualAnswer` verbatim — raw
+`<InTextCitation url="..." fileName="..." documentId="..." chunkId="..."
+...></InTextCitation>` tags dumped straight into the prose. Per your call:
+each tag becomes a small numbered inline marker (`[1]`, `[2]`, ...,
+deduplicated by source and numbered in order of first appearance — reusing
+`extractCitedCitationsFromText`'s existing dedup/ordering exactly), with a
+short legend below the answer mapping each number to its `fileName`.
+
+New function in `src/lib/extract-cited-file-names.js` (a natural sibling of
+`extractCitedCitationsFromText`, not a new file — same subject matter):
+
+```js
+// Full open+close tag pair, unlike extractCitedCitationsFromText's TAG_REGEX
+// (which only needs the opening tag's attributes to extract data) — here the
+// *entire* tag, including its closing </InTextCitation>, must be matched and
+// removed, or the literal closing-tag text would be left behind in the
+// cleaned prose.
+const FULL_TAG_REGEX = /<InTextCitation\b([^>]*)><\/InTextCitation>/g;
+
+// Replaces every citation tag in `text` with a small inline [n] marker —
+// same source cited twice reuses the same number — and returns an ordered
+// legend for the sources actually referenced, for a short "Sources:" line
+// below the answer. A tag missing fileName/documentId/chunkId (the same
+// "useless downstream" case extractCitedCitationsFromText already skips) is
+// removed with no marker, rather than left as raw markup.
+function formatAnswerWithCitations(text) {
+  if (!text) return { cleanedText: text, legend: [] };
+  const citations = extractCitedCitationsFromText(text);
+  const numberByKey = new Map(citations.map((c, i) => [`${c.documentId}:${c.chunkId}`, i + 1]));
+
+  FULL_TAG_REGEX.lastIndex = 0;
+  const cleanedText = text.replace(FULL_TAG_REGEX, (whole, attrs) => {
+    const fileName = FILE_NAME_ATTR_REGEX.exec(attrs);
+    const documentId = DOCUMENT_ID_ATTR_REGEX.exec(attrs);
+    const chunkId = CHUNK_ID_ATTR_REGEX.exec(attrs);
+    if (!fileName || !documentId || !chunkId) return '';
+    const n = numberByKey.get(`${documentId[1]}:${chunkId[1]}`);
+    return n ? `[${n}]` : '';
+  });
+
+  const legend = citations.map((c, i) => ({ number: i + 1, fileName: c.fileName }));
+  return { cleanedText, legend };
+}
+```
+
+`FILE_NAME_ATTR_REGEX`/`DOCUMENT_ID_ATTR_REGEX`/`CHUNK_ID_ATTR_REGEX` are the
+same three attribute regexes `extractCitedCitationsFromText` already uses
+internally — exported alongside the two functions rather than redefined, so
+there is exactly one place that knows how to pull `fileName`/`documentId`/
+`chunkId` out of a tag's attribute string.
+
+`scripts/generate-pdf-report.js` calls `formatAnswerWithCitations(entry.actualAnswer)`
+instead of passing `entry.actualAnswer` straight to `field('Answer: ', ...)`,
+renders `cleanedText` as the answer paragraph, then — only when
+`legend.length > 0` — a small `Sources: [1] a.pdf   [2] b.pdf` line
+immediately below it in a smaller, gray font (visually secondary to the
+answer itself, matching how citation reasons already render smaller/inline
+elsewhere in this file).
 
 ### Color palette (kept minimal, no new dependency)
 
@@ -165,13 +298,34 @@ across calls, same gotcha the existing code already navigates for
   - Claim Processing section: existing accuracy/processing-time assertions
     move under this section's heading; a 5th citationMatch card appears
     only when `namedScores.citationMatch !== undefined`.
-  - Q&A section: a question's actual `riskStatus` renders as a tag
-    (`RISK DETECTED`/`UNSURE`/`RISK NOT DETECTED`) distinct from whether it
-    *matched*; the three match indicators render on one line, not three.
+  - Q&A section: the 4-column row (`Risk Status`/`Score`/`Risk Match`/
+    `Citation Match`) renders correct values and colors per question;
+    `Risk Status` shows the question's actual `riskStatus`, distinct from
+    whether it *matched*; the Answer paragraph shows numbered `[n]` markers,
+    not raw `<InTextCitation>` tags; a "Sources:" line appears listing each
+    marker's `fileName` when the answer has any citations, and is entirely
+    absent when it has none.
   - Existing tests for `formatCitationMatch`, `sortByRiskStatus`,
     `uniqueFilePath`, `formatTimestampForFilename`, `formatLocalTimestamp`,
     `humanizeFieldName` are unchanged — none of their behavior changes,
     only where their output gets placed on the page.
+- `src/lib/extract-cited-file-names.test.js`:
+  - `formatAnswerWithCitations` replaces each tag with its `[n]` marker, in
+    order of first appearance; a source cited twice reuses the same number
+    (only one legend entry, two markers in the text); a tag missing
+    `fileName`/`documentId`/`chunkId` is removed with no marker (matching
+    `extractCitedCitationsFromText`'s existing skip behavior); no tags in
+    the input returns the text unchanged and an empty legend; `null`/`''`
+    input returns `{ cleanedText: input, legend: [] }` without throwing.
+- `src/lib/qa-match-assertion.test.js`:
+  - `parseGraderVerdict` accepts a response with `score` (0-100) and returns
+    it; accepts a response *without* `score` (the citation-grading shape)
+    and returns `score: undefined`, still validating `matches`/`reason` as
+    before; throws when `score` is present but out of range or non-numeric.
+  - `qaMatchAssertion`'s `perQuestionBreakdown` carries the grader's `score`
+    through per question; `answerContentMatch` (the aggregate) is unaffected
+    by `score`'s presence — still the same `matches`-boolean fraction as
+    every existing test already asserts.
 
 ## Out of scope
 
@@ -185,3 +339,12 @@ across calls, same gotcha the existing code already navigates for
 - No charts/graphs (the reference's throughput-over-time and per-step-timing
   charts) — nothing in this pipeline's data supports them (no time-series
   telemetry, only start/end timestamps for two coarse phases).
+- No change to `answerContentMatch`'s aggregate computation,
+  `computeAccuracy`'s weighting, or any threshold/pass-fail logic — the new
+  per-question `score` is display-only (see "additive, not a replacement"
+  above).
+- No change to `results.json`'s stored `actualAnswer` — `perQuestionBreakdown`
+  keeps the raw answer text with citation tags intact (still needed for
+  `citationMatch` grading, which reads citations off the raw text).
+  `formatAnswerWithCitations` runs only at PDF-render time, in
+  `generate-pdf-report.js`; it produces a display copy, not a stored one.
