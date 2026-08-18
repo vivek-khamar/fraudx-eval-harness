@@ -27,8 +27,10 @@ function buildQuestionGradingPrompt(question, actualAnswer) {
     `Model answer: ${actualAnswer}`,
     '',
     "Does the model answer's content and reasoning semantically match the expected answer above",
-    '(exact wording does not matter, meaning does)? Respond with only a JSON object, no other text:',
-    '{"matches": boolean, "reason": string}.',
+    '(exact wording does not matter, meaning does)? Also rate how well the model answer captures',
+    'the expected answer on a 0-100 scale (100 = perfect semantic match, 0 = completely wrong or',
+    'missing). Respond with only a JSON object, no other text:',
+    '{"matches": boolean, "score": number, "reason": string}.',
   ].join('\n');
 }
 
@@ -53,7 +55,10 @@ function parseGraderVerdict(responseOutput) {
   if (typeof parsed.matches !== 'boolean' || typeof parsed.reason !== 'string') {
     throw new Error(`Grader response JSON missing matches/reason fields: ${text}`);
   }
-  return { matches: parsed.matches, reason: parsed.reason };
+  if (parsed.score !== undefined && (typeof parsed.score !== 'number' || Number.isNaN(parsed.score) || parsed.score < 0 || parsed.score > 100)) {
+    throw new Error(`Grader response score must be a number in [0,100] when present: ${text}`);
+  }
+  return { matches: parsed.matches, reason: parsed.reason, score: parsed.score };
 }
 
 const NO_CITATION_RESOLVED_REASON = 'No cited chunk resolved to compare against the expected passage.';
@@ -138,7 +143,7 @@ async function qaMatchAssertion(output, context) {
     if (response.error) {
       throw new Error(response.error);
     }
-    const { matches, reason } = parseGraderVerdict(response.output);
+    const { matches, reason, score } = parseGraderVerdict(response.output);
     const riskStatus = actual && actual.riskStatus;
     const riskStatusMatches = riskStatus === q.expectedRiskStatus;
 
@@ -160,6 +165,7 @@ async function qaMatchAssertion(output, context) {
       riskStatusMatches,
       matches,
       reason,
+      score,
       actualCitedFileNames,
       citationMatches,
       citationMatchReason,

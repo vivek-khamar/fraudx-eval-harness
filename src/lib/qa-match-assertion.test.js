@@ -44,24 +44,30 @@ test('computeRiskStatusMatch matches by question text even when predefinedQuesti
   assert.equal(computeRiskStatusMatch(output, expectedQa), 1);
 });
 
-test('buildQuestionGradingPrompt embeds the question, expected answer, and actual answer', () => {
+test('buildQuestionGradingPrompt embeds the question, expected answer, actual answer, and asks for a 0-100 score', () => {
   const question = { predefinedQuestionId: 1, question: 'Is there fraud?', expectedAnswerSummary: 'Yes, per doc X.' };
   const prompt = buildQuestionGradingPrompt(question, 'Yes, doc X confirms it.');
 
   assert.match(prompt, /Is there fraud\?/);
   assert.match(prompt, /Yes, per doc X\./);
   assert.match(prompt, /Yes, doc X confirms it\./);
-  assert.match(prompt, /"matches": boolean, "reason": string/);
+  assert.match(prompt, /0-100 scale/);
+  assert.match(prompt, /"matches": boolean, "score": number, "reason": string/);
 });
 
-test('parseGraderVerdict parses a clean JSON response', () => {
+test('parseGraderVerdict parses a clean JSON response with a score', () => {
+  const result = parseGraderVerdict('{"matches": true, "score": 87, "reason": "content matches"}');
+  assert.deepEqual(result, { matches: true, reason: 'content matches', score: 87 });
+});
+
+test('parseGraderVerdict parses a response with no score field (the citation-grading shape) and returns score: undefined', () => {
   const result = parseGraderVerdict('{"matches": true, "reason": "content matches"}');
-  assert.deepEqual(result, { matches: true, reason: 'content matches' });
+  assert.deepEqual(result, { matches: true, reason: 'content matches', score: undefined });
 });
 
 test('parseGraderVerdict extracts JSON even when wrapped in markdown code fences', () => {
-  const response = '```json\n{"matches": false, "reason": "no match"}\n```';
-  assert.deepEqual(parseGraderVerdict(response), { matches: false, reason: 'no match' });
+  const response = '```json\n{"matches": false, "score": 12, "reason": "no match"}\n```';
+  assert.deepEqual(parseGraderVerdict(response), { matches: false, reason: 'no match', score: 12 });
 });
 
 test('parseGraderVerdict throws a clear error when no JSON object is present', () => {
@@ -71,6 +77,21 @@ test('parseGraderVerdict throws a clear error when no JSON object is present', (
 test('parseGraderVerdict throws a clear error when matches or reason fields are missing or the wrong type', () => {
   assert.throws(() => parseGraderVerdict('{"matches": "yes", "reason": "ok"}'), /missing matches\/reason fields/);
   assert.throws(() => parseGraderVerdict('{"matches": true}'), /missing matches\/reason fields/);
+});
+
+test('parseGraderVerdict throws when score is present but out of range or the wrong type', () => {
+  assert.throws(
+    () => parseGraderVerdict('{"matches": true, "score": 150, "reason": "ok"}'),
+    /score must be a number in \[0,100\]/
+  );
+  assert.throws(
+    () => parseGraderVerdict('{"matches": true, "score": -1, "reason": "ok"}'),
+    /score must be a number in \[0,100\]/
+  );
+  assert.throws(
+    () => parseGraderVerdict('{"matches": true, "score": "87", "reason": "ok"}'),
+    /score must be a number in \[0,100\]/
+  );
 });
 
 function mockLoadApiProvider(t, callApiImpl) {
@@ -141,10 +162,28 @@ test('qaMatchAssertion returns one perQuestionBreakdown entry per question', asy
     riskStatusMatches: true,
     matches: true,
     reason: 'looks right',
+    score: undefined,
     actualCitedFileNames: [],
     citationMatches: undefined,
     citationMatchReason: undefined,
   });
+});
+
+test('qaMatchAssertion carries the grader\'s score through to perQuestionBreakdown, without affecting answerContentMatch', async (t) => {
+  let callCount = 0;
+  mockLoadApiProvider(t, async () => {
+    callCount += 1;
+    const scores = [90, 40, 70];
+    return { output: JSON.stringify({ matches: true, score: scores[callCount - 1], reason: `reason ${callCount}` }) };
+  });
+
+  const result = await qaMatchAssertion(fakeOutput(), fakeContext());
+
+  assert.equal(result.perQuestionBreakdown[0].score, 90);
+  assert.equal(result.perQuestionBreakdown[1].score, 40);
+  assert.equal(result.perQuestionBreakdown[2].score, 70);
+  // all three mocked "matches: true" -> answerContentMatch is unaffected by the score values above
+  assert.equal(result.namedScores.answerContentMatch, 1);
 });
 
 test('qaMatchAssertion sets riskStatusMatches false per-question when the actual riskStatus differs from expected', async (t) => {
