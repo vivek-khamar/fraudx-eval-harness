@@ -40,6 +40,13 @@ function formatLocalTimestamp(date) {
   );
 }
 
+// Formats a millisecond duration as a decimal-seconds string, e.g. 12345 -> "12.3s".
+// Used by the ingestion/processing stat cards — raw ms/1000 division can produce
+// long, ugly floats (12.345666...) that a stat card has no room to wrap.
+function formatSeconds(ms) {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function humanizeFieldName(camelCaseName) {
   const spaced = camelCaseName.replace(/([a-z])([A-Z])/g, '$1 $2');
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -114,6 +121,31 @@ function drawTableRow(doc, columns, colWidths, { bold = false } = {}) {
   // the left margin. Reset both cursor coordinates explicitly.
   doc.x = doc.page.margins.left;
   doc.y = startY + rowHeight;
+}
+
+// Draws `cards.length` equal-width bordered boxes in a row: a large bold value on
+// top, a small label beneath. `color` (optional, per card) tints just the value
+// text — e.g. green for a clean success count, red for a nonzero failure count —
+// everything else (borders, labels) stays plain black/gray, matching pdfkit's
+// existing minimal aesthetic elsewhere in this file (drawTableRow's borders, the
+// '#cccccc' question dividers).
+function drawStatCardRow(doc, cards) {
+  const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const gap = 10;
+  const cardWidth = (usableWidth - gap * (cards.length - 1)) / cards.length;
+  const cardHeight = 60;
+  if (doc.y + cardHeight > doc.page.height - doc.page.margins.bottom) doc.addPage();
+  const startY = doc.y;
+  cards.forEach((card, i) => {
+    const x = doc.page.margins.left + i * (cardWidth + gap);
+    doc.rect(x, startY, cardWidth, cardHeight).stroke('#cccccc');
+    doc.fontSize(18).font('Helvetica-Bold').fillColor(card.color || 'black')
+      .text(String(card.value), x + 8, startY + 10, { width: cardWidth - 16 });
+    doc.fontSize(9).font('Helvetica').fillColor('black')
+      .text(card.label, x + 8, startY + 36, { width: cardWidth - 16 });
+  });
+  doc.y = startY + cardHeight + 12;
+  doc.x = doc.page.margins.left;
 }
 
 function findComponent(gradingResult, metric) {
@@ -323,8 +355,10 @@ module.exports = {
   generatePdfReports,
   formatTimestampForFilename,
   formatLocalTimestamp,
+  formatSeconds,
   humanizeFieldName,
   sortByRiskStatus,
   uniqueFilePath,
   formatCitationMatch,
+  drawStatCardRow,
 };

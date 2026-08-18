@@ -6,14 +6,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { PDFParse } = require('pdf-parse');
+const PDFDocument = require('pdfkit');
 const {
   generatePdfReports,
   formatTimestampForFilename,
   formatLocalTimestamp,
+  formatSeconds,
   humanizeFieldName,
   sortByRiskStatus,
   uniqueFilePath,
   formatCitationMatch,
+  drawStatCardRow,
 } = require('./generate-pdf-report');
 
 // Fixed to UTC so tests that feed a UTC instant (e.g. via FIXED_NOW below) get
@@ -103,6 +106,61 @@ test('formatLocalTimestamp always renders IST (Asia/Kolkata), regardless of the 
 test('formatLocalTimestamp zero-pads month, day, hour, minute, and second', () => {
   process.env.TZ = 'UTC';
   assert.equal(formatLocalTimestamp(new Date('2026-01-02T03:04:05.000Z')), '2026-01-02T08:34:05');
+});
+
+test('formatSeconds converts milliseconds to a one-decimal seconds string', () => {
+  assert.equal(formatSeconds(12345), '12.3s');
+  assert.equal(formatSeconds(30000), '30.0s');
+  assert.equal(formatSeconds(999), '1.0s');
+});
+
+test('drawStatCardRow renders each card\'s value and label as text on the page', async () => {
+  const doc = new PDFDocument({ margin: 50 });
+  const chunks = [];
+  doc.on('data', (chunk) => chunks.push(chunk));
+  const ended = new Promise((resolve) => doc.on('end', resolve));
+
+  drawStatCardRow(doc, [
+    { value: 12, label: 'Docs submitted' },
+    { value: 10, label: 'Docs complete', color: 'green' },
+    { value: 2, label: 'Docs failed', color: 'red' },
+    { value: '12.3s', label: 'Ingestion time' },
+  ]);
+  doc.end();
+  await ended;
+
+  const parser = new PDFParse({ data: Buffer.concat(chunks) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.match(text, /12/);
+  assert.match(text, /Docs submitted/);
+  assert.match(text, /10/);
+  assert.match(text, /Docs complete/);
+  assert.match(text, /2/);
+  assert.match(text, /Docs failed/);
+  assert.match(text, /12\.3s/);
+  assert.match(text, /Ingestion time/);
+});
+
+test('drawStatCardRow advances doc.y past the card row and resets doc.x to the left margin', () => {
+  const doc = new PDFDocument({ margin: 50 });
+  doc.on('data', () => {}); // drain so the stream doesn't back up
+  const startY = doc.y;
+
+  drawStatCardRow(doc, [
+    { value: 1, label: 'A' },
+    { value: 2, label: 'B' },
+  ]);
+
+  assert.equal(doc.y, startY + 60 + 12); // cardHeight (60) + the row's trailing gap (12)
+  assert.equal(doc.x, doc.page.margins.left);
+  doc.end();
 });
 
 test('humanizeFieldName splits camelCase into title-cased words', () => {
