@@ -847,6 +847,98 @@ git commit -m "docs: describe the bucket-driven baseline in the README"
 
 ---
 
+### Task 9b: Gate the existing-bucket S3 grounding fetch behind SKIP_S3_GROUNDING
+
+**Plan amendment (discovered during Task 9's execution, not caught by pre-flight review):**
+`src/provider.js` skips its S3 chunk-grounding fetch entirely when
+`SKIP_S3_GROUNDING=true` (the local-dry-run escape hatch, since the mock
+server has no real S3-backed grounding data and this lets the dry-run flow
+work with zero AWS credentials). `scripts/build-tests-vars.js`'s
+`fetchExistingBucketBaseline` was never given the same gate — it
+unconditionally calls `s3Client.fetchChunkGroundingData(sourceBucketId,
+timeoutMs)`, so the "Trying it locally without hitting real infra" flow
+Task 9's README documents still actually requires real AWS credentials for
+this one step. This step brings `fetchExistingBucketBaseline` in line with
+`provider.js`'s existing pattern.
+
+**Files:**
+- Modify: `scripts/build-tests-vars.js`
+- Modify: `scripts/build-tests-vars.test.js`
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `scripts/build-tests-vars.test.js`:
+
+```js
+test('fetchExistingBucketBaseline skips the S3 grounding fetch entirely when SKIP_S3_GROUNDING=true', async (t) => {
+  process.env.SKIP_S3_GROUNDING = 'true';
+  t.after(() => {
+    delete process.env.SKIP_S3_GROUNDING;
+  });
+  mockFraudxClient(t, {
+    getBucketDetails: async () => ({ bucketStatus: 'SUCCESS', latestReportId: 'report-1', claimCategoryId: 23, tags: [] }),
+    fetchReport: async () => ({ summary: 's', questions: [{ predefinedQuestionId: 1, question: 'Q?', answer: 'A', riskStatus: 'UNSURE' }] }),
+  });
+  mockS3Client(t, async () => {
+    throw new Error('fetchChunkGroundingData must not be called when SKIP_S3_GROUNDING=true');
+  });
+
+  const result = await fetchExistingBucketBaseline('https://fake', 31804, { token: 't', orgId: 1, userId: 1 }, 1000);
+
+  assert.equal(result.existingGroundingData, null);
+});
+```
+
+Run: `node --test scripts/build-tests-vars.test.js`
+Expected: FAILS — the mocked `fetchChunkGroundingData` throws because the current code calls it unconditionally.
+
+- [ ] **Step 2: Implement**
+
+In `scripts/build-tests-vars.js`, replace:
+
+```js
+  const existingGroundingData = await s3Client.fetchChunkGroundingData(sourceBucketId, timeoutMs);
+```
+
+with:
+
+```js
+  // Same local-dry-run escape hatch as provider.js's own grounding fetch — the mock server has
+  // no real S3-backed grounding data, and this flow needs no AWS credentials at all when set.
+  const existingGroundingData = process.env.SKIP_S3_GROUNDING === 'true'
+    ? null
+    : await s3Client.fetchChunkGroundingData(sourceBucketId, timeoutMs);
+```
+
+- [ ] **Step 3: Run and verify**
+
+Run: `node --test scripts/build-tests-vars.test.js`
+Expected: all tests PASS, including the new one.
+
+Run: `npm test`
+Expected: full suite passes.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/build-tests-vars.js scripts/build-tests-vars.test.js
+git commit -m "fix: gate build-tests-vars.js's S3 grounding fetch behind SKIP_S3_GROUNDING"
+```
+
+- [ ] **Step 5: Update the README**
+
+The mock-server walkthrough's note added in Task 9 ("not entirely infra-free
+— still needs AWS_S3_BUCKET_NAME and reachable AWS credentials for the
+existing-bucket S3 fetch") is no longer accurate once this fix lands. Update
+it to state the flow needs zero AWS credentials when `SKIP_S3_GROUNDING=true`
+is set (matching how the rest of that section already describes
+`provider.js`'s own behavior).
+
+```bash
+git add README.md
+git commit -m "docs: SKIP_S3_GROUNDING now covers the existing-bucket fetch too"
+```
+
 ### Task 10: Full verification
 
 - [ ] **Step 1: Run the full unit suite**
