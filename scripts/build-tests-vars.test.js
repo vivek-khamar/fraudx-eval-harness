@@ -108,6 +108,41 @@ test('buildExpectedQa resolves each question\'s own citations via the existing b
   }]);
 });
 
+test('buildExpectedQa dedupes byte-identical chunk texts resolved from different citations', () => {
+  const questions = [{
+    predefinedQuestionId: 1,
+    question: 'Q1?',
+    answer:
+      'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation> and ' +
+      '<InTextCitation fileName="b.pdf" documentId="doc-2" chunkId="chunk-2"></InTextCitation>',
+    riskStatus: 'RISK_DETECTED',
+  }];
+  const grounding = new Map([
+    [s3Client.chunkKey('doc-1', 'chunk-1'), 'Same passage.'],
+    [s3Client.chunkKey('doc-2', 'chunk-2'), 'Same passage.'],
+  ]);
+
+  const result = buildExpectedQa(questions, grounding);
+
+  assert.deepEqual(result[0].expectedChunkText, ['Same passage.']);
+});
+
+test('buildExpectedQa caps expectedChunkText at 5 entries, keeping the first 5 in citation order', () => {
+  const citationTags = Array.from({ length: 8 }, (_, i) =>
+    `<InTextCitation fileName="f${i}.pdf" documentId="doc-${i}" chunkId="chunk-${i}"></InTextCitation>`
+  ).join(' ');
+  const questions = [{ predefinedQuestionId: 1, question: 'Q1?', answer: citationTags, riskStatus: 'RISK_DETECTED' }];
+  const grounding = new Map(
+    Array.from({ length: 8 }, (_, i) => [s3Client.chunkKey(`doc-${i}`, `chunk-${i}`), `Passage ${i}.`])
+  );
+
+  const result = buildExpectedQa(questions, grounding);
+
+  assert.deepEqual(result[0].expectedChunkText, [
+    'Passage 0.', 'Passage 1.', 'Passage 2.', 'Passage 3.', 'Passage 4.',
+  ]);
+});
+
 test('buildExpectedQa omits expectedChunkText entirely when no citation resolves', () => {
   const questions = [{ predefinedQuestionId: 1, question: 'Q1?', answer: 'no citations here', riskStatus: 'UNSURE' }];
   const result = buildExpectedQa(questions, new Map());

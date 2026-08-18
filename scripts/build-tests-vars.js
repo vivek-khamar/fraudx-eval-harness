@@ -9,6 +9,12 @@ const s3Client = require('../src/s3-client');
 const resolveModelId = require('../src/lib/resolve-model-id');
 const { extractCitedCitationsFromText } = require('../src/lib/extract-cited-file-names');
 
+// qa-match-assertion.js requires every expectedChunkText entry to match, so an uncapped list
+// makes that assertion both slower (one grader call per entry) and stricter than intended —
+// a real claim's question can carry dozens of citations. Cap keeps this bounded and matches
+// this codebase's existing bounded-truncation style (see DOCUMENT_TEXT_CHAR_LIMIT in src/provider.js).
+const MAX_EXPECTED_CHUNKS_PER_QUESTION = 5;
+
 // Pure. Builds this run's one promptfoo test case in exactly the vars shape
 // qa-match-assertion.js / metadata-match-assertion.js / provider.js already
 // expect today — only how these values are sourced changes, not their shape.
@@ -48,13 +54,16 @@ function buildTestsVars({
 function buildExpectedQa(existingQuestions, existingGroundingData) {
   return existingQuestions.map((q) => {
     const citations = extractCitedCitationsFromText(q.answer);
-    const expectedChunkText = [];
+    const chunkTexts = [];
     if (existingGroundingData) {
       for (const { documentId, chunkId } of citations) {
         const chunkText = existingGroundingData.get(s3Client.chunkKey(documentId, chunkId));
-        if (chunkText) expectedChunkText.push(chunkText);
+        if (chunkText) chunkTexts.push(chunkText);
       }
     }
+    // Dedupe byte-identical chunk texts before capping — same rationale as the
+    // `new Set(texts)` dedup src/provider.js applies to citedDocumentsText.
+    const expectedChunkText = [...new Set(chunkTexts)].slice(0, MAX_EXPECTED_CHUNKS_PER_QUESTION);
     return {
       predefinedQuestionId: q.predefinedQuestionId,
       question: q.question,
