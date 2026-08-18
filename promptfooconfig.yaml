@@ -29,6 +29,6 @@ defaultTest:
       metric: metadata_match
       value: file://src/lib/metadata-match-assertion.js
 
-# Test cases are generated from claimsdata/claims.json (see scripts/generate-tests-vars.js)
-# into tests.vars.yaml — add a new golden claim there, not here or in tests.vars.yaml directly.
+# Test cases are generated live from the existing bucket named by SOURCE_BUCKET_ID
+# (see scripts/build-tests-vars.js) into tests.vars.yaml — never hand-edit that file.
 tests: file://tests.vars.yaml
