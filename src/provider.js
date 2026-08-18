@@ -64,7 +64,7 @@ class FraudXClaimProvider {
     }));
     const ingestionTimeMs = Date.now() - ingestionStart;
 
-    if (failedDocuments.length === sourceDocs.length) {
+    if (sourceDocs.length > 0 && failedDocuments.length === sourceDocs.length) {
       throw new Error(
         `All ${sourceDocs.length} document(s) failed to copy into the new bucket — nothing was ingested: ` +
         failedDocuments.map((f) => `${f.fileName}: ${f.error}`).join('; ')

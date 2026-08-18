@@ -537,6 +537,28 @@ test('a lookup keyed by s3-client.js chunkKey resolves end-to-end in qa-match-as
   assert.equal(assertionResult.namedScores.citationMatch, 1);
 });
 
+test('callApi does not throw when source bucket has zero documents, and proceeds to claim processing', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  let triggerClaimProcessingCalled = false;
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    listBucketDocuments: async () => [], // Zero source documents
+    triggerClaimProcessing: async () => {
+      triggerClaimProcessingCalled = true;
+      return 'task-1';
+    },
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(triggerClaimProcessingCalled, true, 'claim processing must be triggered even with zero source documents');
+  assert.deepEqual(result.output.failedDocuments, []);
+});
+
 test('callApi collapses byte-identical chunk text cited twice into one copy, keeping genuinely different chunks', async (t) => {
   process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {
