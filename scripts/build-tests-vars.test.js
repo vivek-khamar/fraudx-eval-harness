@@ -174,6 +174,24 @@ test('fetchExistingBucketBaseline leaves tags undefined when the existing bucket
   assert.equal(result.tags, undefined);
 });
 
+test('fetchExistingBucketBaseline skips the S3 grounding fetch entirely when SKIP_S3_GROUNDING=true', async (t) => {
+  process.env.SKIP_S3_GROUNDING = 'true';
+  t.after(() => {
+    delete process.env.SKIP_S3_GROUNDING;
+  });
+  mockFraudxClient(t, {
+    getBucketDetails: async () => ({ bucketStatus: 'SUCCESS', latestReportId: 'report-1', claimCategoryId: 23, tags: [] }),
+    fetchReport: async () => ({ summary: 's', questions: [{ predefinedQuestionId: 1, question: 'Q?', answer: 'A', riskStatus: 'UNSURE' }] }),
+  });
+  mockS3Client(t, async () => {
+    throw new Error('fetchChunkGroundingData must not be called when SKIP_S3_GROUNDING=true');
+  });
+
+  const result = await fetchExistingBucketBaseline('https://fake', 31804, { token: 't', orgId: 1, userId: 1 }, 1000);
+
+  assert.equal(result.existingGroundingData, null);
+});
+
 test('generateTestsVars writes a re-parseable tests.vars.yaml from a live fetch', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'build-tests-vars-'));
   const outputPath = path.join(tmpDir, 'tests.vars.yaml');

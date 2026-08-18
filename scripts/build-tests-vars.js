@@ -80,7 +80,11 @@ async function fetchExistingBucketBaseline(base, sourceBucketId, auth, timeoutMs
   if (!Array.isArray(existingReport.questions) || existingReport.questions.length === 0) {
     throw new Error(`Existing bucket ${sourceBucketId}'s report has no questions — it can't serve as ground truth.`);
   }
-  const existingGroundingData = await s3Client.fetchChunkGroundingData(sourceBucketId, timeoutMs);
+  // Same local-dry-run escape hatch as provider.js's own grounding fetch — the mock server has
+  // no real S3-backed grounding data, and this flow needs no AWS credentials at all when set.
+  const existingGroundingData = process.env.SKIP_S3_GROUNDING === 'true'
+    ? null
+    : await s3Client.fetchChunkGroundingData(sourceBucketId, timeoutMs);
   const tags = Array.isArray(bucket.tags) && bucket.tags.length > 0
     ? bucket.tags.map((t) => ({ tagId: t.tagId, tagValueId: t.tagValueId }))
     : undefined;
