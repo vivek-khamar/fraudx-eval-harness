@@ -157,18 +157,18 @@ npm run eval
 ```
 
 - Before anything else, `npm run eval`'s `preeval` hook runs `scripts/build-tests-vars.js`,
-  which fails fast with a clear error if `FRAUDX_ENDPOINT_URI` or `SOURCE_BUCKET_ID` is unset,
-  or if the bucket named by `SOURCE_BUCKET_ID` has no completed report (or a report with no
-  questions) to serve as ground truth. It then logs in, fetches that existing bucket's own
-  report and its own S3 chunk-grounding file, resolves `INGESTION_MODEL_NAME`/
-  `PROCESSING_MODEL_NAME` to platform model ids (via `POST /fraudx/api/v1/models/search`),
-  and writes the result — the new claim's `bucketName` set to `CLAIM_NAME` — as a single
-  generated test case into `tests.vars.yaml`. There's no single upfront check that names every
-  missing env var at once the way the old claims.json-based setup did: an unset
-  `INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME` still fails during this same `preeval` step
-  (no model has a blank `displayName`, so the lookup throws before any real work starts), but
-  an unset `CLAIM_NAME` isn't caught locally at all — it only surfaces once the pipeline calls
-  the FraudX API to create a claim with it. AWS credentials (`AWS_ACCESS_KEY_ID`/
+  which fails fast with a clear error if `FRAUDX_ENDPOINT_URI`, `SOURCE_BUCKET_ID`, or
+  `CLAIM_NAME` is unset, or if the bucket named by `SOURCE_BUCKET_ID` has no completed report
+  (or a report with no questions) to serve as ground truth. It then logs in, fetches that
+  existing bucket's own report and its own S3 chunk-grounding file, resolves
+  `INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME` to platform model ids (via
+  `POST /fraudx/api/v1/models/search`), and writes the result — the new claim's `bucketName`
+  set to `CLAIM_NAME` — as a single generated test case into `tests.vars.yaml`. There's no
+  single upfront check that names every missing env var at once the way the old
+  claims.json-based setup did: each of `FRAUDX_ENDPOINT_URI`/`SOURCE_BUCKET_ID`/`CLAIM_NAME`
+  is checked in sequence (first blank one wins), and an unset `INGESTION_MODEL_NAME`/
+  `PROCESSING_MODEL_NAME` still fails later during this same `preeval` step (no model has a
+  blank `displayName`, so the lookup throws before any real work starts). AWS credentials (`AWS_ACCESS_KEY_ID`/
   `AWS_SECRET_ACCESS_KEY`/`AWS_REGION`) aren't explicitly validated either; only
   `AWS_S3_BUCKET_NAME` gets a dedicated check, in `src/s3-client.js`. Note that this
   `preeval` step's own S3 chunk-grounding fetch (for the *existing* bucket) is gated by
