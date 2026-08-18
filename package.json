@@ -1,7 +1,7 @@
 {
   "name": "fraudx-claim-eval",
   "version": "1.0.0",
-  "description": "Golden-claim promptfoo eval for the FraudX document-ingestion and report pipeline",
+  "description": "Bucket-driven promptfoo eval for the FraudX document-ingestion and report pipeline",
   "private": true,
   "scripts": {
     "pretest": "",
