@@ -307,3 +307,14 @@ test('generateTestsVars throws a clear error when SOURCE_BUCKET_ID is not set', 
   });
   await assert.rejects(() => generateTestsVars('/tmp/unused.yaml'), /SOURCE_BUCKET_ID must be set/);
 });
+
+test('generateTestsVars throws a clear error when CLAIM_NAME is not set', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  process.env.SOURCE_BUCKET_ID = '31804';
+  delete process.env.CLAIM_NAME;
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+    delete process.env.SOURCE_BUCKET_ID;
+  });
+  await assert.rejects(() => generateTestsVars('/tmp/unused.yaml'), /CLAIM_NAME must be set/);
+});

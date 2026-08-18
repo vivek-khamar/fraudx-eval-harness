@@ -107,6 +107,9 @@ async function generateTestsVars(outputPath) {
   if (!process.env.SOURCE_BUCKET_ID || Number.isNaN(sourceBucketId)) {
     throw new Error('SOURCE_BUCKET_ID must be set to an existing, already-processed bucket id.');
   }
+  if (!process.env.CLAIM_NAME) {
+    throw new Error('CLAIM_NAME must be set to a name for the new claim.');
+  }
   const timeoutMs = Number(process.env.FRAUDX_HTTP_TIMEOUT_MS || 900000);
   const auth = await fraudxClient.login(base, timeoutMs);
 
