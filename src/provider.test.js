@@ -331,6 +331,46 @@ test('callApi sets output.failedDocuments to an empty array when every document 
   assert.deepEqual(result.output.failedDocuments, []);
 });
 
+test('callApi reports docsSubmitted and docsComplete counts on output.ingestion', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, happyPathMocks([]));
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.ingestion.docsSubmitted, 1);
+  assert.equal(result.output.ingestion.docsComplete, 1);
+});
+
+test('callApi reports docsComplete lower than docsSubmitted when some documents fail', async (t) => {
+  process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
+  t.after(() => {
+    delete process.env.FRAUDX_ENDPOINT_URI;
+  });
+  mockFraudxClient(t, {
+    ...happyPathMocks([]),
+    listBucketDocuments: async () => [
+      { gxMasterId: 1, fileName: 'a.pdf', extension: 'pdf' },
+      { gxMasterId: 2, fileName: 'b.pdf', extension: 'pdf' },
+    ],
+    requestUploadUrls: async (base, auth, files) => {
+      if (files[0].fileName === 'b.pdf') {
+        throw new Error('upload URL service unavailable');
+      }
+      return [{ fileName: files[0].fileName, jobId: 1, uploadUrl: 'https://s3.example/put' }];
+    },
+  });
+
+  const provider = new Provider();
+  const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
+
+  assert.equal(result.output.ingestion.docsSubmitted, 2);
+  assert.equal(result.output.ingestion.docsComplete, 1);
+});
+
 test('callApi fetches grounding text only for citations that resolve in the S3 chunk-grounding file, truncated to 15000 chars', async (t) => {
   process.env.FRAUDX_ENDPOINT_URI = 'https://fake.fraudx.test';
   t.after(() => {

@@ -125,7 +125,11 @@ class FraudXClaimProvider {
 
     return {
       output: {
-        ingestion: { timeMs: ingestionTimeMs },
+        ingestion: {
+          timeMs: ingestionTimeMs,
+          docsSubmitted: sourceDocs.length,
+          docsComplete: sourceDocs.length - failedDocuments.length,
+        },
         processing: { timeMs: processingTimeMs },
         report,
         citedDocumentsText,
