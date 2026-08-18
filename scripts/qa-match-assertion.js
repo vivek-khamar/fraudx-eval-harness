@@ -58,23 +58,12 @@ function parseGraderVerdict(responseOutput) {
 
 const NO_CITATION_RESOLVED_REASON = 'No cited chunk resolved to compare against the expected passage.';
 
-// Resolves every citation in this one question's actual answer against
-// chunkGroundingData, and asks the grader whether ANY resolved chunk's text
-// semantically supports expectedChunkText — "at least one" semantics, same
-// as the fileName-based check this replaces. A citation that doesn't resolve
-// (missing grounding data entirely, or that specific chunk absent from it)
-// is skipped, not treated as a mismatch by itself. If NO citation resolves
-// at all, this returns false with a fixed reason and makes no grader call.
-async function computeChunkTextMatch(provider, expectedChunkText, actualAnswer, chunkGroundingData) {
-  const citations = extractCitedCitationsFromText(actualAnswer);
-  let sawAnyResolved = false;
-  let lastFalseReason = NO_CITATION_RESOLVED_REASON;
-  for (const { documentId, chunkId } of citations) {
-    const chunkText = chunkGroundingData ? chunkGroundingData.get(s3Client.chunkKey(documentId, chunkId)) : undefined;
-    if (!chunkText) {
-      continue;
-    }
-    sawAnyResolved = true;
+// For one golden passage, asks the grader whether ANY of the actual resolved chunks semantically
+// supports it — "at least one" semantics per expected passage, same as the single-passage design
+// this generalizes. Stops at the first match.
+async function matchesAnyResolvedChunk(provider, expectedChunkText, resolvedChunkTexts) {
+  let lastReason;
+  for (const chunkText of resolvedChunkTexts) {
     const prompt = buildChunkTextMatchPrompt(expectedChunkText, chunkText);
     const response = await provider.callApi(prompt);
     if (response.error) {
@@ -82,13 +71,54 @@ async function computeChunkTextMatch(provider, expectedChunkText, actualAnswer, 
     }
     const { matches, reason } = parseGraderVerdict(response.output);
     if (matches) {
-      return { citationMatches: true, citationMatchReason: reason };
+      return { matched: true, reason };
     }
-    lastFalseReason = reason;
+    lastReason = reason;
   }
+  return { matched: false, reason: lastReason };
+}
+
+// A single expectedChunkText entry reports its own reason verbatim (preserving the exact
+// single-passage behavior this generalizes). With multiple entries, the unmatched ones are the
+// actionable signal, so they're surfaced instead of the ones that already succeeded; only once
+// every entry has matched do the (now all-success) reasons get joined.
+function summarizeCitationReason(perExpectedResults) {
+  if (perExpectedResults.length === 1) {
+    return perExpectedResults[0].reason;
+  }
+  const unmatched = perExpectedResults.filter((r) => !r.matched);
+  const relevant = unmatched.length > 0 ? unmatched : perExpectedResults;
+  return relevant.map((r) => r.reason).join(' | ');
+}
+
+// Resolves every citation in this one question's actual answer against chunkGroundingData, then
+// requires EVERY entry in expectedChunkTexts to be supported by at least one resolved chunk — a
+// question's answer can draw on several distinct source chunks, and each golden passage curated
+// for it should actually be grounded, not just one lucky match. A citation that doesn't resolve
+// (missing grounding data entirely, or that specific chunk absent from it) is skipped, not treated
+// as a mismatch by itself. If NO citation resolves at all, this returns false with a fixed reason
+// and makes no grader call.
+async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer, chunkGroundingData) {
+  const citations = extractCitedCitationsFromText(actualAnswer);
+  const resolvedChunkTexts = [];
+  for (const { documentId, chunkId } of citations) {
+    const chunkText = chunkGroundingData ? chunkGroundingData.get(s3Client.chunkKey(documentId, chunkId)) : undefined;
+    if (chunkText) {
+      resolvedChunkTexts.push(chunkText);
+    }
+  }
+  if (resolvedChunkTexts.length === 0) {
+    return { citationMatches: false, citationMatchReason: NO_CITATION_RESOLVED_REASON };
+  }
+
+  const perExpectedResults = [];
+  for (const expectedChunkText of expectedChunkTexts) {
+    perExpectedResults.push(await matchesAnyResolvedChunk(provider, expectedChunkText, resolvedChunkTexts));
+  }
+
   return {
-    citationMatches: false,
-    citationMatchReason: sawAnyResolved ? lastFalseReason : NO_CITATION_RESOLVED_REASON,
+    citationMatches: perExpectedResults.every((r) => r.matched),
+    citationMatchReason: summarizeCitationReason(perExpectedResults),
   };
 }
 
@@ -116,7 +146,7 @@ async function qaMatchAssertion(output, context) {
 
     let citationMatches;
     let citationMatchReason;
-    if (typeof q.expectedChunkText === 'string' && q.expectedChunkText.length > 0) {
+    if (Array.isArray(q.expectedChunkText) && q.expectedChunkText.length > 0) {
       const chunkResult = await computeChunkTextMatch(provider, q.expectedChunkText, actualAnswer, output.chunkGroundingData);
       citationMatches = chunkResult.citationMatches;
       citationMatchReason = chunkResult.citationMatchReason;

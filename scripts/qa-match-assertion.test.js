@@ -231,8 +231,8 @@ function fakeContextWithExpectedChunkText() {
     vars: {
       expected: {
         qa: [
-          { predefinedQuestionId: 1, question: 'Q1?', expectedAnswerSummary: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedChunkText: 'The gold passage about attorney X.' },
-          { predefinedQuestionId: 2, question: 'Q2?', expectedAnswerSummary: 'A2', expectedRiskStatus: 'UNSURE', expectedChunkText: 'The gold passage about provider Y.' },
+          { predefinedQuestionId: 1, question: 'Q1?', expectedAnswerSummary: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedChunkText: ['The gold passage about attorney X.'] },
+          { predefinedQuestionId: 2, question: 'Q2?', expectedAnswerSummary: 'A2', expectedRiskStatus: 'UNSURE', expectedChunkText: ['The gold passage about provider Y.'] },
           { predefinedQuestionId: 3, question: 'Q3?', expectedAnswerSummary: 'A3', expectedRiskStatus: 'RISK_DETECTED' }, // no expectedChunkText — not graded for citations
         ],
       },
@@ -317,6 +317,71 @@ test('qaMatchAssertion treats citing any one of multiple chunks as a match, not 
   assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'second chunk matches');
 });
 
+test('qaMatchAssertion requires EVERY expectedChunkText entry to be supported, not just one, since a question can draw on several distinct source chunks', async (t) => {
+  let callCount = 0;
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      callCount += 1;
+      // entry A matches chunk-1 immediately (1 call); entry B fails chunk-1 then matches chunk-2 (2 calls)
+      if (callCount === 1) return { output: JSON.stringify({ matches: true, reason: 'entryA matched chunk-1' }) };
+      if (callCount === 2) return { output: JSON.stringify({ matches: false, reason: 'entryB does not match chunk-1' }) };
+      if (callCount === 3) return { output: JSON.stringify({ matches: true, reason: 'entryB matched chunk-2' }) };
+      throw new Error(`unexpected extra chunk-match grader call #${callCount}`);
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  output.report.questions[0].answer = [
+    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+  ].join(' ');
+  output.chunkGroundingData.set('doc-1:chunk-1', 'first chunk text');
+  output.chunkGroundingData.set('doc-1:chunk-2', 'second chunk text');
+
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[0].expectedChunkText = ['gold passage A', 'gold passage B'];
+  context.vars.expected.qa[1].expectedChunkText = undefined; // isolate question 1's call count
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(callCount, 3, 'entry A resolves in 1 call, entry B in 2 calls');
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
+});
+
+test('qaMatchAssertion reports citationMatches false when at least one expectedChunkText entry finds no supporting chunk, even though others do', async (t) => {
+  let callCount = 0;
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      callCount += 1;
+      // entry A matches chunk-1 immediately; entry B never matches either chunk
+      if (callCount === 1) return { output: JSON.stringify({ matches: true, reason: 'entryA matched chunk-1' }) };
+      if (callCount === 2) return { output: JSON.stringify({ matches: false, reason: 'entryB does not match chunk-1' }) };
+      if (callCount === 3) return { output: JSON.stringify({ matches: false, reason: 'entryB does not match chunk-2' }) };
+      throw new Error(`unexpected extra chunk-match grader call #${callCount}`);
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  output.report.questions[0].answer = [
+    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+  ].join(' ');
+  output.chunkGroundingData.set('doc-1:chunk-1', 'first chunk text');
+  output.chunkGroundingData.set('doc-1:chunk-2', 'second chunk text');
+
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[0].expectedChunkText = ['gold passage A', 'gold passage B'];
+  context.vars.expected.qa[1].expectedChunkText = undefined; // isolate question 1's call count
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
+  // The reason must surface the entry that actually failed, not the one that matched.
+  assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'entryB does not match chunk-2');
+});
+
 test('qaMatchAssertion skips a citation whose (documentId, chunkId) is not in chunkGroundingData, without crashing', async (t) => {
   mockLoadApiProvider(t, async (prompt) => {
     if (isChunkTextMatchPrompt(prompt)) {
@@ -383,11 +448,11 @@ test('qaMatchAssertion folds citationMatch into its own score as a 3-way average
   assert.equal(result.score, (riskStatusMatch + answerContentMatch + citationMatch) / 3);
 });
 
-test('qaMatchAssertion treats an empty-string expectedChunkText as NOT graded for citations', async (t) => {
+test('qaMatchAssertion treats an empty-array expectedChunkText as NOT graded for citations', async (t) => {
   mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
 
   const context = fakeContext();
-  context.vars.expected.qa[0].expectedChunkText = '';
+  context.vars.expected.qa[0].expectedChunkText = [];
 
   const result = await qaMatchAssertion(fakeOutput(), context);
 
@@ -408,7 +473,7 @@ test('qaMatchAssertion correctly reads expectedChunkText when vars are built by 
     expectedInsuranceFirm: 'Z',
     summary: 'S',
     questions: [
-      { id: 1, question: 'Q1?', expectedAnswer: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedChunkText: 'gold passage text' },
+      { id: 1, question: 'Q1?', expectedAnswer: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedChunkText: ['gold passage text'] },
     ],
   };
   const [{ vars }] = buildTestsVars([rawClaim]);

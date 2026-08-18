@@ -458,7 +458,7 @@ test('a lookup keyed by s3-client.js chunkKey resolves end-to-end in qa-match-as
           question: 'Q1?',
           expectedAnswerSummary: 'A1',
           expectedRiskStatus: 'RISK_DETECTED',
-          expectedChunkText: 'The verbatim grounded passage.',
+          expectedChunkText: ['The verbatim grounded passage.'],
         }],
       },
     },

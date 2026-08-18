@@ -31,21 +31,29 @@ document-ingestion + report pipeline and scores each against a human-verified an
       `expectedAnswerSummary` for semantic (not exact-wording) match, and returns the fraction of
       questions that match.
     - `citationMatch` (LLM-graded, optional per question): a question in `claimsdata/claims.json`
-      can set an `expectedChunkText` string — a curated golden source passage for that question,
-      copied verbatim from the S3 chunk-grounding file `provider.js` reads (see below). For every
-      question that sets it, `citationMatch` resolves that question's actually-cited
-      `(documentId, chunkId)` pairs against `output.chunkGroundingData` and asks the grader
-      whether **any** resolved chunk's text semantically supports the expected passage (exact
-      wording doesn't matter, meaning does) — one extra grader call per resolved citation, on top
-      of the existing per-question answer-content call. A citation that doesn't resolve (missing
-      grounding data, or that specific chunk absent from it) is skipped rather than counted as a
-      mismatch by itself; if *no* citation resolves at all, the question fails with a fixed reason
-      and no grader call is made. Neither `documentId` nor `chunkId` is ever compared directly —
-      both are per-ingestion and change every run — only the chunk *text* they resolve to is
-      compared. Questions that don't set `expectedChunkText` (or set it to an empty string) are
-      excluded from this fraction. If *no* question in a claim sets it, `citationMatch` is
-      `undefined` for that claim (not `0`). `citationMatch` is reported for visibility (in
-      `namedScores` and the PDF) but is not part of the accuracy formula below.
+      can set an `expectedChunkText` **array of strings** — one or more curated golden source
+      passages for that question, each copied verbatim from the S3 chunk-grounding file
+      `provider.js` reads (see below). A question's answer can draw on several distinct source
+      chunks, so `expectedChunkText` can list more than one passage when that's the case. For
+      every question that sets a non-empty array, `citationMatch` resolves that question's
+      actually-cited `(documentId, chunkId)` pairs against `output.chunkGroundingData` and, for
+      **every entry** in `expectedChunkText`, asks the grader whether **any** resolved chunk's
+      text semantically supports that entry (exact wording doesn't matter, meaning does) — one
+      grader call per (expected passage × resolved citation) pair tried, on top of the existing
+      per-question answer-content call. `citationMatches` for the question is `true` only if
+      **every** entry in `expectedChunkText` finds a supporting resolved chunk — a single unmatched
+      entry fails the whole question, even if the others matched; `citationMatchReason` reports the
+      unmatched entries' own reasons when any fail, or all entries' reasons joined with `" | "`
+      when every entry matches (and just that one entry's own reason, unwrapped, for the common
+      single-entry case). A citation that doesn't resolve (missing grounding data, or that specific
+      chunk absent from it) is skipped rather than counted as a mismatch by itself; if *no* citation
+      resolves at all, the question fails with a fixed reason and no grader call is made. Neither
+      `documentId` nor `chunkId` is ever compared directly — both are per-ingestion and change every
+      run — only the chunk *text* they resolve to is compared. Questions that don't set
+      `expectedChunkText` (or set it to an empty array) are excluded from this fraction. If *no*
+      question in a claim sets it, `citationMatch` is `undefined` for that claim (not `0`).
+      `citationMatch` is reported for visibility (in `namedScores` and the PDF) but is not part of
+      the accuracy formula below.
 
     Questions are matched between the golden `expected.qa` and the real report by `question` text,
     not `predefinedQuestionId` — like `documentId`/`chunkId`, that id is minted fresh by the

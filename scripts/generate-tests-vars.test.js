@@ -114,14 +114,14 @@ test('buildTestsVars passes expectedChunkText through when a question sets it', 
         question: 'Q?',
         expectedAnswer: 'A.',
         expectedRiskStatus: 'RISK_DETECTED',
-        expectedChunkText: 'The curated gold source passage for this question.',
+        expectedChunkText: ['The curated gold source passage for this question.'],
       },
     ],
   });
   const result = buildTestsVars([claim]);
-  assert.equal(
+  assert.deepEqual(
     result[0].vars.expected.qa[0].expectedChunkText,
-    'The curated gold source passage for this question.'
+    ['The curated gold source passage for this question.']
   );
 });
 
