@@ -460,23 +460,26 @@ test('qaMatchAssertion treats an empty-array expectedChunkText as NOT graded for
   assert.equal('citationMatch' in result.namedScores, false);
 });
 
-test('qaMatchAssertion correctly reads expectedChunkText when vars are built by the real generate-tests-vars.js pipeline, not hand-authored', async (t) => {
-  const { buildTestsVars } = require('../../scripts/generate-tests-vars');
+test('qaMatchAssertion correctly reads expectedChunkText when vars are built by the real build-tests-vars.js pipeline, not hand-authored', async (t) => {
+  const { buildTestsVars, buildExpectedQa } = require('../../scripts/build-tests-vars');
   mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, reason: 'ok' }) }));
 
-  const rawClaim = {
-    bucketId: 1,
-    claimCategoryId: 1,
-    expectedFraudRiskScore: 0.5,
-    expectedClaimantName: 'X',
-    expectedDefendant: 'Y',
-    expectedInsuranceFirm: 'Z',
+  const existingReport = {
     summary: 'S',
+    fraudRiskScore: 0.5,
+    claimantName: 'X',
+    defendant: 'Y',
+    insuranceFirm: 'Z',
     questions: [
-      { id: 1, question: 'Q1?', expectedAnswer: 'A1', expectedRiskStatus: 'RISK_DETECTED', expectedChunkText: ['gold passage text'] },
+      { predefinedQuestionId: 1, question: 'Q1?', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>', riskStatus: 'RISK_DETECTED' },
     ],
   };
-  const [{ vars }] = buildTestsVars([rawClaim]);
+  const existingGroundingData = new Map([['doc-1:chunk-1', 'gold passage text']]);
+  const expectedQa = buildExpectedQa(existingReport.questions, existingGroundingData);
+  const [{ vars }] = buildTestsVars({
+    sourceBucketId: 1, claimCategoryId: 1, tags: undefined, newClaimName: 'x',
+    ingestionModelId: 1, processingModelId: 9, existingReport, expectedQa,
+  });
   const context = { vars, test: { assert: [{ metric: 'qa_match' }], options: {} } };
   const output = {
     report: {
@@ -484,7 +487,7 @@ test('qaMatchAssertion correctly reads expectedChunkText when vars are built by 
         { predefinedQuestionId: 1, question: 'Q1?', riskStatus: 'RISK_DETECTED', answer: 'see <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>' },
       ],
     },
-    chunkGroundingData: new Map([['doc-1:chunk-1', 'matching text']]),
+    chunkGroundingData: new Map([['doc-1:chunk-1', 'gold passage text']]),
   };
 
   const result = await qaMatchAssertion(output, context);
