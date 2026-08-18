@@ -16,6 +16,10 @@ const {
   sortByRiskStatus,
   uniqueFilePath,
   formatCitationMatch,
+  formatRiskStatus,
+  riskStatusColor,
+  booleanMatchColor,
+  citationMatchColor,
   drawStatCardRow,
 } = require('./generate-pdf-report');
 
@@ -40,8 +44,9 @@ function sampleResultsFile() {
           },
           response: {
             output: {
-              ingestion: { timeMs: 30000 },
+              ingestion: { timeMs: 30000, docsSubmitted: 1, docsComplete: 1 },
               processing: { timeMs: 60000 },
+              failedDocuments: [],
               report: {
                 bucketId: 32023,
                 fraudRiskScore: 0.7,
@@ -63,7 +68,7 @@ function sampleResultsFile() {
               {
                 assertion: { metric: 'qa_match' },
                 perQuestionBreakdown: [
-                  { predefinedQuestionId: 1, question: 'Is there fraud?', actualAnswer: 'RISK DETECTED: Yes, per doc X.', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, reason: 'Matches expected reasoning' },
+                  { predefinedQuestionId: 1, question: 'Is there fraud?', actualAnswer: 'RISK DETECTED: Yes, per doc X.', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, score: 87, reason: 'Matches expected reasoning' },
                 ],
               },
               {
@@ -215,6 +220,37 @@ test('formatCitationMatch renders N/A when citationMatches is undefined', () => 
   assert.equal(formatCitationMatch({ citationMatches: null }), 'N/A');
 });
 
+test('formatRiskStatus spaces out the enum\'s underscores for display', () => {
+  assert.equal(formatRiskStatus('RISK_DETECTED'), 'RISK DETECTED');
+  assert.equal(formatRiskStatus('RISK_NOT_DETECTED'), 'RISK NOT DETECTED');
+  assert.equal(formatRiskStatus('UNSURE'), 'UNSURE');
+});
+
+test('formatRiskStatus renders N/A for a missing riskStatus', () => {
+  assert.equal(formatRiskStatus(undefined), 'N/A');
+  assert.equal(formatRiskStatus(null), 'N/A');
+});
+
+test('riskStatusColor maps RISK_DETECTED to red, RISK_NOT_DETECTED to green, UNSURE to gray, and anything else to black', () => {
+  assert.equal(riskStatusColor('RISK_DETECTED'), 'red');
+  assert.equal(riskStatusColor('RISK_NOT_DETECTED'), 'green');
+  assert.equal(riskStatusColor('UNSURE'), 'gray');
+  assert.equal(riskStatusColor(undefined), 'black');
+  assert.equal(riskStatusColor('SOMETHING_ELSE'), 'black');
+});
+
+test('booleanMatchColor maps true to green and false to red', () => {
+  assert.equal(booleanMatchColor(true), 'green');
+  assert.equal(booleanMatchColor(false), 'red');
+});
+
+test('citationMatchColor maps true to green, false to red, and null/undefined (N/A) to gray', () => {
+  assert.equal(citationMatchColor({ citationMatches: true }), 'green');
+  assert.equal(citationMatchColor({ citationMatches: false }), 'red');
+  assert.equal(citationMatchColor({ citationMatches: undefined }), 'gray');
+  assert.equal(citationMatchColor({ citationMatches: null }), 'gray');
+});
+
 test('uniqueFilePath returns the given path unchanged when nothing exists there yet', (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'unique-file-path-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -330,6 +366,148 @@ test('generatePdfReports skips a claim with a bucketId but missing gradingResult
   assert.ok(!fs.existsSync(path.join(reportsDir, '99999')));
 });
 
+test('generatePdfReports skips a claim missing docsSubmitted/docsComplete on output.ingestion', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const malformedClaim = sampleResultsFile().results.results[0];
+  malformedClaim.response.output.report.bucketId = 77777;
+  delete malformedClaim.response.output.ingestion.docsSubmitted;
+  delete malformedClaim.response.output.ingestion.docsComplete;
+  fixture.results.results.unshift(malformedClaim);
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  assert.equal(written.length, 1);
+  assert.equal(written[0], path.join(reportsDir, '32023', 'report-2026-08-13T11-22-47.pdf'));
+  assert.ok(!fs.existsSync(path.join(reportsDir, '77777')));
+});
+
+test('generatePdfReports renders the Document Ingestion section with docs submitted/complete/failed counts and ingestion time', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  fixture.results.results[0].response.output.ingestion = { timeMs: 12300, docsSubmitted: 5, docsComplete: 3 };
+  fixture.results.results[0].response.output.failedDocuments = [
+    { fileName: 'a.pdf', error: 'upload URL service unavailable' },
+    { fileName: 'b.pdf', error: 'timed out waiting for GX processing' },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.match(text, /Document Ingestion/);
+  assert.match(text, /Docs submitted/);
+  assert.match(text, /5/);
+  assert.match(text, /Docs complete/);
+  assert.match(text, /3/);
+  assert.match(text, /Docs failed/);
+  assert.match(text, /12\.3s/);
+  assert.match(text, /Ingestion time/);
+  assert.match(text, /Failed documents:/);
+  assert.match(text, /a\.pdf: upload URL service unavailable/);
+  assert.match(text, /b\.pdf: timed out waiting for GX processing/);
+});
+
+test('generatePdfReports renders no "Failed documents" heading at all when failedDocuments is empty', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile())); // failedDocuments: []
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.doesNotMatch(text, /Failed documents:/);
+});
+
+test('generatePdfReports renders the Claim Processing section heading with accuracy, processing time, risk status match, and answer content match cards', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile()));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  // namedScores: riskStatusMatch 0.8 -> 80%, answerContentMatch 0.6 -> 60%,
+  // accuracy = round(25*0.6 + 25*0.75 + 25*1 + 25*1) = round(83.75) = 84.
+  assert.match(text, /Claim Processing/);
+  assert.match(text, /Accuracy/);
+  assert.match(text, /84/);
+  assert.match(text, /Processing time/);
+  assert.match(text, /60\.0s/);
+  assert.match(text, /Risk status match/);
+  assert.match(text, /80%/);
+  assert.match(text, /Answer content match/);
+  assert.match(text, /60%/);
+  // No assertion that "Citation Match" is absent here: the Q&A table's column
+  // header (Task 5's 4-column row) always reads "Citation Match" regardless of
+  // whether the 5th stat card renders — that's a different element with the
+  // same text. The conditional 5th-card behavior is covered on its own below.
+});
+
+test('generatePdfReports renders a 5th Citation match stat card only when namedScores.citationMatch is defined', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  fixture.results.results[0].gradingResult.namedScores.citationMatch = 0.5;
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.match(text, /Citation match/);
+  assert.match(text, /50%/);
+});
+
 test('generatePdfReports writes a PDF whose text includes the bucketId, question text, entity names, and report_quality reasoning', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -354,9 +532,13 @@ test('generatePdfReports writes a PDF whose text includes the bucketId, question
   assert.match(text, /Bucket ID: 32023/);
   assert.match(text, /Generated at: 2026-08-13T11:22:47\n/);
   assert.match(text, /Is there fraud\?/);
-  assert.match(text, /Risk Status Match: YES/);
+  assert.match(text, /Risk Status/); // Q&A table header
+  assert.match(text, /Score/);
+  assert.match(text, /Risk Match/);
+  assert.match(text, /Citation Match/);
+  assert.match(text, /RISK DETECTED/); // this question's actual (formatted) riskStatus
+  assert.match(text, /87%/); // this question's per-question score
   assert.match(text, /Answer: RISK DETECTED: Yes, per doc X\./, 'the risk-status prefix must remain in the rendered answer text');
-  assert.match(text, /Citation Match: N\/A/);
   assert.match(text, /Summary is complete and grounded\./);
   assert.match(text, /Jose Briones/);
   assert.match(text, /One Team Restoration, Inc\./);
@@ -379,9 +561,9 @@ test('generatePdfReports numbers questions sequentially in Detected/Unsure/Not-D
   );
   // Deliberately out of both ID order and risk-status order.
   qaMatchComponent.perQuestionBreakdown = [
-    { predefinedQuestionId: 900, question: 'UNSURE-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', matches: true, reason: 'r' },
-    { predefinedQuestionId: 100, question: 'NOT-DETECTED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', matches: true, reason: 'r' },
-    { predefinedQuestionId: 500, question: 'DETECTED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', matches: true, reason: 'r' },
+    { predefinedQuestionId: 900, question: 'UNSURE-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', matches: true, score: 60, reason: 'r' },
+    { predefinedQuestionId: 100, question: 'NOT-DETECTED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', matches: true, score: 70, reason: 'r' },
+    { predefinedQuestionId: 500, question: 'DETECTED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', matches: true, score: 80, reason: 'r' },
   ];
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
@@ -426,8 +608,8 @@ test('generatePdfReports keeps a question\'s content together in reading order, 
   // regardless of margins/font metrics, unlike a value merely close to one page.
   const longReason = `${longReasonBegin} ${'The grader compared the actual answer against the expected summary in detail. '.repeat(100)} ${longReasonEnd}`;
   qaMatchComponent.perQuestionBreakdown = [
-    { predefinedQuestionId: 1, question: 'FIRST-QUESTION-MARKER: Is there fraud?', actualAnswer: 'Yes, per doc X.', matches: true, reason: 'Short first reason.' },
-    { predefinedQuestionId: 2, question: 'SECOND-QUESTION-MARKER: What is the claim status?', actualAnswer: 'Open, pending review.', matches: false, reason: longReason },
+    { predefinedQuestionId: 1, question: 'FIRST-QUESTION-MARKER: Is there fraud?', actualAnswer: 'Yes, per doc X.', matches: true, score: 90, reason: 'Short first reason.' },
+    { predefinedQuestionId: 2, question: 'SECOND-QUESTION-MARKER: What is the claim status?', actualAnswer: 'Open, pending review.', matches: false, score: 20, reason: longReason },
   ];
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
@@ -540,9 +722,9 @@ test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s r
     (c) => c.assertion.metric === 'qa_match'
   );
   qaMatchComponent.perQuestionBreakdown = [
-    { predefinedQuestionId: 1, question: 'MATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, reason: 'r', actualCitedFileNames: ['a.pdf'], citationMatches: true, citationMatchReason: 'Matches the expected passage.' },
-    { predefinedQuestionId: 2, question: 'MISMATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', riskStatusMatches: false, matches: true, reason: 'r', actualCitedFileNames: ['c.pdf'], citationMatches: false, citationMatchReason: 'The cited passage is unrelated to the expected passage.' },
-    { predefinedQuestionId: 3, question: 'UNGRADED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', riskStatusMatches: true, matches: true, reason: 'r', actualCitedFileNames: ['z.pdf'], citationMatches: undefined, citationMatchReason: undefined },
+    { predefinedQuestionId: 1, question: 'MATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, score: 95, reason: 'r', actualCitedFileNames: ['a.pdf'], citationMatches: true, citationMatchReason: 'Matches the expected passage.' },
+    { predefinedQuestionId: 2, question: 'MISMATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', riskStatusMatches: false, matches: true, score: 40, reason: 'r', actualCitedFileNames: ['c.pdf'], citationMatches: false, citationMatchReason: 'The cited passage is unrelated to the expected passage.' },
+    { predefinedQuestionId: 3, question: 'UNGRADED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', riskStatusMatches: true, matches: true, score: 75, reason: 'r', actualCitedFileNames: ['z.pdf'], citationMatches: undefined, citationMatchReason: undefined },
   ];
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
@@ -560,9 +742,73 @@ test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s r
 
   // Risk-status ordering puts MATCHED (RISK_DETECTED) first, MISMATCHED (UNSURE) second,
   // UNGRADED (RISK_NOT_DETECTED) third — so these markers already appear in this order.
-  assert.match(text, /MATCHED-QUESTION[\s\S]*?Citation Match: YES/);
-  assert.match(text, /MISMATCHED-QUESTION[\s\S]*?Citation Match: NO \(The cited passage is unrelated to the expected passage\.\)/);
-  assert.match(text, /UNGRADED-QUESTION[\s\S]*?Citation Match: N\/A/);
+  // Each fixture entry has a distinct (formatted) riskStatus, so it doubles as an
+  // unambiguous per-question anchor for the values that follow it.
+  assert.match(text, /MATCHED-QUESTION[\s\S]*?RISK DETECTED[\s\S]*?95%[\s\S]*?YES/);
+  assert.match(text, /MISMATCHED-QUESTION[\s\S]*?UNSURE[\s\S]*?40%[\s\S]*?NO \(The cited passage is unrelated to the expected passage\.\)/);
+  assert.match(text, /UNGRADED-QUESTION[\s\S]*?RISK NOT DETECTED[\s\S]*?75%[\s\S]*?N\/A/);
+});
+
+test('generatePdfReports shows a numbered [n] marker in the Answer paragraph instead of a raw <InTextCitation> tag, with a Sources line below it', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const qaMatchComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'qa_match'
+  );
+  qaMatchComponent.perQuestionBreakdown = [
+    {
+      predefinedQuestionId: 1,
+      question: 'CITED-QUESTION',
+      actualAnswer: 'Fraud detected <InTextCitation fileName="report-a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation> per the filing.',
+      riskStatus: 'RISK_DETECTED',
+      riskStatusMatches: true,
+      matches: true,
+      score: 88,
+      reason: 'r',
+    },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.match(text, /Fraud detected \[1\] per the filing\./);
+  assert.doesNotMatch(text, /InTextCitation/);
+  assert.match(text, /Sources: \[1\] report-a\.pdf/);
+});
+
+test('generatePdfReports shows no Sources line when the answer has no citations', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile())); // actualAnswer has no citation tags
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.doesNotMatch(text, /Sources:/);
 });
 
 test('running generate-pdf-report.js as a CLI exits non-zero when a claim in results.json errored, even though it still writes the PDF for a healthy claim in the same file', (t) => {

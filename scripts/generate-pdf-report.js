@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const PDFDocument = require('pdfkit');
 const { entitiesMatch, fraudRiskScoreMatches } = require('../src/lib/metadata-match-assertion');
+const { formatAnswerWithCitations } = require('../src/lib/extract-cited-file-names');
 const { computeAccuracy, scoreDashboard, dashboardHasErrors } = require('./score-dashboard');
 
 const MARGIN = 50;
@@ -62,6 +63,30 @@ function formatCitationMatch(entry) {
   return `NO (${entry.citationMatchReason})`;
 }
 
+// Renders the enum-style riskStatus (RISK_DETECTED / UNSURE / RISK_NOT_DETECTED) for
+// display, spacing out the underscores; 'N/A' when missing.
+function formatRiskStatus(riskStatus) {
+  return riskStatus ? riskStatus.replace(/_/g, ' ') : 'N/A';
+}
+
+// RISK_DETECTED is the alarming case (red), RISK_NOT_DETECTED is the clean case
+// (green), UNSURE is neither (gray); any other/missing value stays plain black.
+function riskStatusColor(riskStatus) {
+  if (riskStatus === 'RISK_DETECTED') return 'red';
+  if (riskStatus === 'RISK_NOT_DETECTED') return 'green';
+  if (riskStatus === 'UNSURE') return 'gray';
+  return 'black';
+}
+
+function booleanMatchColor(matches) {
+  return matches ? 'green' : 'red';
+}
+
+function citationMatchColor(entry) {
+  if (entry.citationMatches == null) return 'gray';
+  return entry.citationMatches ? 'green' : 'red';
+}
+
 const RISK_STATUS_ORDER = ['RISK_DETECTED', 'UNSURE', 'RISK_NOT_DETECTED'];
 
 function riskStatusSortKey(riskStatus) {
@@ -98,7 +123,7 @@ function uniqueFilePath(filePath) {
   return candidate;
 }
 
-function drawTableRow(doc, columns, colWidths, { bold = false } = {}) {
+function drawTableRow(doc, columns, colWidths, { bold = false, colors } = {}) {
   doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
   const heights = columns.map((text, i) => doc.heightOfString(String(text), { width: colWidths[i] }));
   const rowHeight = Math.max(...heights) + 8;
@@ -108,7 +133,13 @@ function drawTableRow(doc, columns, colWidths, { bold = false } = {}) {
   const startY = doc.y;
   let x = doc.page.margins.left;
   columns.forEach((text, i) => {
+    if (colors && colors[i]) {
+      doc.fillColor(colors[i]);
+    }
     doc.text(String(text), x, startY, { width: colWidths[i] });
+    if (colors && colors[i]) {
+      doc.fillColor('black');
+    }
     x += colWidths[i] + COLUMN_GAP;
   });
   if (bold) {
@@ -169,13 +200,16 @@ function hasRequiredNamedScores(namedScores) {
 // Mirrors the defensive shape-check in scripts/score-dashboard.js: a claim can have a
 // bucketId (so it got past the "did the report even get created" check) yet still be
 // missing the data renderClaimPdf needs, e.g. a gradingResult that never ran to
-// completion. Skip such claims instead of letting renderClaimPdf throw and abort the
-// whole run — the rest of the file's claims should still get their PDFs written.
+// completion, or an ingestion object predating the docsSubmitted/docsComplete counts.
+// Skip such claims instead of letting renderClaimPdf throw and abort the whole run —
+// the rest of the file's claims should still get their PDFs written.
 function isClaimRenderable(result) {
   const output = result.response?.output;
   return Boolean(
     output &&
     output.ingestion &&
+    typeof output.ingestion.docsSubmitted === 'number' &&
+    typeof output.ingestion.docsComplete === 'number' &&
     output.processing &&
     result.vars?.expected &&
     hasRequiredNamedScores(result.gradingResult?.namedScores)
@@ -190,10 +224,9 @@ function renderClaimPdf(result, timestamp, filePath) {
   const qaMatchComponent = findComponent(result.gradingResult, 'qa_match');
   const reportQualityComponent = findComponent(result.gradingResult, 'report_quality');
   const perQuestionBreakdown = (qaMatchComponent && qaMatchComponent.perQuestionBreakdown) || [];
+  const failedDocuments = output.failedDocuments || [];
 
   const bucketId = report.bucketId;
-  const ingestionTime = output.ingestion.timeMs / 1000;
-  const processingTime = output.processing.timeMs / 1000;
   const accuracy = computeAccuracy(namedScores);
 
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -211,14 +244,8 @@ function renderClaimPdf(result, timestamp, filePath) {
     doc.font('Helvetica').text(value);
   }
   topField('Bucket ID: ', String(bucketId));
-  topField('Ingestion time: ', `${ingestionTime}s`);
-  topField('Processing time: ', `${processingTime}s`);
-  topField('Accuracy: ', String(accuracy));
   topField('Generated at: ', timestamp);
   doc.moveDown();
-
-  doc.fontSize(14).text('Question-by-question results');
-  doc.moveDown(0.75);
 
   // Renders one "Label: value" line with a bold label and a regular-weight
   // value, wrapping within usableWidth like a normal paragraph.
@@ -228,19 +255,93 @@ function renderClaimPdf(result, timestamp, filePath) {
     doc.moveDown(0.35);
   }
 
+  // --- Section 1: Document Ingestion ---
+  doc.fontSize(14).text('Document Ingestion');
+  doc.moveDown(0.5);
+  drawStatCardRow(doc, [
+    { value: output.ingestion.docsSubmitted, label: 'Docs submitted' },
+    { value: output.ingestion.docsComplete, label: 'Docs complete', color: 'green' },
+    { value: failedDocuments.length, label: 'Docs failed', color: failedDocuments.length > 0 ? 'red' : 'black' },
+    { value: formatSeconds(output.ingestion.timeMs), label: 'Ingestion time' },
+  ]);
+
+  if (failedDocuments.length > 0) {
+    doc.fontSize(10).font('Helvetica-Bold').text('Failed documents:');
+    doc.font('Helvetica');
+    doc.moveDown(0.25);
+    for (const { fileName, error } of failedDocuments) {
+      doc.text(`${fileName}: ${error}`, { width: usableWidth });
+    }
+    doc.moveDown();
+  } else {
+    doc.moveDown(0.5);
+  }
+
+  // --- Section 2: Claim Processing ---
+  doc.fontSize(14).text('Claim Processing');
+  doc.moveDown(0.5);
+  const processingCards = [
+    { value: accuracy, label: 'Accuracy' },
+    { value: formatSeconds(output.processing.timeMs), label: 'Processing time' },
+    { value: `${Math.round(namedScores.riskStatusMatch * 100)}%`, label: 'Risk status match' },
+    { value: `${Math.round(namedScores.answerContentMatch * 100)}%`, label: 'Answer content match' },
+  ];
+  if (namedScores.citationMatch !== undefined) {
+    processingCards.push({ value: `${Math.round(namedScores.citationMatch * 100)}%`, label: 'Citation match' });
+  }
+  drawStatCardRow(doc, processingCards);
+
+  doc.fontSize(14).text('Question-by-question results');
+  doc.moveDown(0.75);
+
+  doc.fontSize(10);
+  // Column widths are not evenly split: Citation Match holds the grader's free-text
+  // citationMatchReason (via formatCitationMatch's "NO (<reason>)" case), which is
+  // routinely much longer than the other three columns' bounded enum/percentage/
+  // YES-NO content, so it gets the lion's share of the row's total width budget.
+  // The other three are sized just above the widest real value each can hold
+  // (e.g. "RISK NOT DETECTED") so no realistic value in those columns wraps.
+  const qWidths = [110, 32, 58, 282];
+  drawTableRow(doc, ['Risk Status', 'Score', 'Risk Match', 'Citation Match'], qWidths, { bold: true });
+  doc.moveDown(0.5);
+
   const orderedQuestions = sortByRiskStatus(perQuestionBreakdown);
   orderedQuestions.forEach((entry, index) => {
     // Full-width flowing paragraphs (no manual x/y column positioning) let pdfkit's
     // automatic pagination handle overflow within each paragraph, so a single
     // question's content stays together in reading order even if it spans a page
-    // break — unlike the fixed-column drawTableRow layout below, which tears a
+    // break — unlike the fixed-column drawTableRow layout above, which tears a
     // wrapped cell's remaining columns onto whatever page the cursor lands on.
+    // That row above stays safe from that page-break tearing because it's bounded
+    // in *height* (a formatted enum, a percentage, YES/NO, and formatCitationMatch's
+    // verdict all wrap to at most a couple of lines at the qWidths column widths
+    // above, even though the Citation Match cell's text length itself is unbounded —
+    // hence that column getting most of the row's width budget).
     doc.fontSize(11).font('Helvetica-Bold').text(`Q${index + 1}: ${entry.question}`, { width: usableWidth });
     doc.moveDown(0.5);
-    field('Risk Status Match: ', entry.riskStatusMatches ? 'YES' : 'NO');
-    field('Citation Match: ', formatCitationMatch(entry));
-    field('Match: ', entry.matches ? 'YES' : 'NO');
-    field('Answer: ', entry.actualAnswer);
+
+    doc.fontSize(10);
+    drawTableRow(
+      doc,
+      [
+        formatRiskStatus(entry.riskStatus),
+        `${Math.round(entry.score)}%`,
+        entry.riskStatusMatches ? 'YES' : 'NO',
+        formatCitationMatch(entry),
+      ],
+      qWidths,
+      { colors: [riskStatusColor(entry.riskStatus), null, booleanMatchColor(entry.riskStatusMatches), citationMatchColor(entry)] }
+    );
+    doc.moveDown(0.5);
+
+    const { cleanedText, legend } = formatAnswerWithCitations(entry.actualAnswer);
+    field('Answer: ', cleanedText);
+    if (legend.length > 0) {
+      const sourcesText = `Sources: ${legend.map((l) => `[${l.number}] ${l.fileName}`).join('   ')}`;
+      doc.fontSize(9).fillColor('gray').text(sourcesText, { width: usableWidth });
+      doc.fillColor('black');
+      doc.moveDown(0.35);
+    }
     field('Reason: ', entry.reason);
 
     if (index < orderedQuestions.length - 1) {
@@ -360,5 +461,9 @@ module.exports = {
   sortByRiskStatus,
   uniqueFilePath,
   formatCitationMatch,
+  formatRiskStatus,
+  riskStatusColor,
+  booleanMatchColor,
+  citationMatchColor,
   drawStatCardRow,
 };
