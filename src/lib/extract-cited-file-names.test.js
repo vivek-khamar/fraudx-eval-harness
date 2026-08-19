@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { extractCitedCitationsFromText, formatAnswerWithCitations } = require('./extract-cited-file-names');
+const { extractCitedCitationsFromText, formatAnswerWithCitations, normalizeCitationUrl } = require('./extract-cited-file-names');
 
 test('extractCitedCitationsFromText returns the decoded fileName, documentId, and chunkId from a single citation tag', () => {
   const text = 'see <InTextCitation fileName="JOSE%2BBRIONES.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>';
@@ -68,6 +68,33 @@ test('extractCitedCitationsFromText omits the url key entirely (not url: undefin
   const [citation] = extractCitedCitationsFromText(text);
   assert.deepEqual(citation, { fileName: 'report.pdf', documentId: 'doc-1', chunkId: 'chunk-1' });
   assert.equal('url' in citation, false);
+});
+
+test('normalizeCitationUrl fixes a percent-encoded scheme colon ("https%3A//" -> "https://")', () => {
+  assert.equal(
+    normalizeCitationUrl('https%3A//upload.groundx.ai/file/a/b.pdf'),
+    'https://upload.groundx.ai/file/a/b.pdf'
+  );
+  assert.equal(
+    normalizeCitationUrl('http%3A//example.com/x'),
+    'http://example.com/x'
+  );
+});
+
+test('normalizeCitationUrl leaves an already well-formed url unchanged, including one with a legitimate %-escape elsewhere', () => {
+  assert.equal(normalizeCitationUrl('https://example.com/a%20b.pdf'), 'https://example.com/a%20b.pdf');
+});
+
+test('extractCitedCitationsFromText normalizes a url whose scheme colon was percent-encoded by the real report (observed real-world data quirk)', () => {
+  const text = '<InTextCitation fileName="report.pdf" documentId="doc-1" chunkId="chunk-1" url="https%3A//upload.groundx.ai/file/a/b.pdf"></InTextCitation>';
+  const [citation] = extractCitedCitationsFromText(text);
+  assert.equal(citation.url, 'https://upload.groundx.ai/file/a/b.pdf');
+});
+
+test('extractCitedCitationsFromText leaves an already well-formed url unchanged', () => {
+  const text = '<InTextCitation fileName="report.pdf" documentId="doc-1" chunkId="chunk-1" url="https://upload.groundx.ai/file/a/b.pdf"></InTextCitation>';
+  const [citation] = extractCitedCitationsFromText(text);
+  assert.equal(citation.url, 'https://upload.groundx.ai/file/a/b.pdf');
 });
 
 test('extractCitedCitationsFromText is reusable across multiple calls without leaking regex state', () => {

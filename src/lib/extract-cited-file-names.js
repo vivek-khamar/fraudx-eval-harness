@@ -12,15 +12,28 @@ const URL_ATTR_REGEX = /url="([^"]*)"/;
 // would be left behind in the cleaned prose.
 const FULL_TAG_REGEX = /<InTextCitation\b([^>]*)><\/InTextCitation>/g;
 
+// Real GroundX-issued citation urls have been observed with the scheme's colon
+// percent-encoded ("https%3A//..." instead of "https://...") while the rest of
+// the url is untouched — an upstream data quirk in the report itself, not
+// something this codebase produces. Left as-is, a PDF link built from a url in
+// this shape resolves as a broken relative path instead of an absolute one
+// (confirmed: browsers/PDF viewers treat "https%3A//host/path" as a plain path
+// segment, not a recognized "https:" scheme). Normalizing just the scheme
+// delimiter is enough to fix it without touching anything else in the url that
+// might be legitimately percent-encoded.
+function normalizeCitationUrl(url) {
+  return url.replace(/^(https?)%3a/i, '$1:');
+}
+
 // Extracts fileName, documentId, chunkId, and (when present) url from every
 // <InTextCitation ...> tag in a single answer's raw text, decodeURIComponent-ing
 // fileName (the real report URL-encodes it, e.g. "JOSE%2BBRIONES...pdf" ->
-// "JOSE+BRIONES...pdf") — url is left as-is, since it's already a complete URL
-// rather than a single encoded path segment, and decoding it could corrupt a
-// legitimately percent-encoded character within it. `url` is present on the
-// returned object only when the tag actually has one (never `url: undefined`),
-// so callers built before this attribute existed keep working unchanged.
-// Deduplicated by the (documentId, chunkId) pair, NOT by fileName alone — a
+// "JOSE+BRIONES...pdf") and normalizing url's scheme delimiter (see
+// normalizeCitationUrl) — otherwise url is left as-is, since decoding it further
+// could corrupt a legitimately percent-encoded character elsewhere in it.
+// `url` is present on the returned object only when the tag actually has one
+// (never `url: undefined`), so callers built before this attribute existed
+// keep working unchanged. Deduplicated by the (documentId, chunkId) pair, NOT by fileName alone — a
 // single source document is commonly split into many distinct cited chunks,
 // and documentId/chunkId together identify exactly which chunk was cited,
 // which fileName alone cannot. Order of first appearance is preserved. A tag
@@ -50,7 +63,7 @@ function extractCitedCitationsFromText(text) {
     const key = `${documentId}:${chunkId}`;
     if (!seen.has(key)) {
       seen.add(key);
-      citations.push({ fileName, documentId, chunkId, ...(urlMatch ? { url: urlMatch[1] } : {}) });
+      citations.push({ fileName, documentId, chunkId, ...(urlMatch ? { url: normalizeCitationUrl(urlMatch[1]) } : {}) });
     }
   }
   return citations;
@@ -88,6 +101,7 @@ function formatAnswerWithCitations(text) {
 module.exports = {
   extractCitedCitationsFromText,
   formatAnswerWithCitations,
+  normalizeCitationUrl,
   FILE_NAME_ATTR_REGEX,
   DOCUMENT_ID_ATTR_REGEX,
   CHUNK_ID_ATTR_REGEX,
