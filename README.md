@@ -121,24 +121,45 @@ own report, not a hand-curated answer key.
   happened (not the eval's own `results.timestamp`) — so re-running against the same
   `results.json` adds a new, distinctly timestamped file alongside any earlier ones instead of
   overwriting them. On the rare case of two runs landing in the same second, a numeric suffix
-  (`-2`, `-3`, ...) is appended as a fallback. The PDF opens with a centered "Claim Eval Report"
-  title and a field list (bucket ID, ingestion time, processing time, accuracy, and "Generated
-  at" — the same IST timestamp used in the filename, shown with no timezone label), then the
-  question-by-question breakdown —
-  questions are numbered sequentially (Q1, Q2, ...) and ordered by risk status (Detected, then
-  Unsure, then Not Detected) rather than by their original ID, so the highest-risk findings read
-  first. Each block has a heading followed by labeled Risk Status Match, Citation Match, Match,
-  Answer, and Reason
-  fields, separated by a divider between questions, laid out as full-width flowing paragraphs so
-  a single question's content stays together in reading order even across a page break; the
-  "RISK ...:" prefix the real report embeds at the start of each answer is left in place (Risk
-  Status Match reports whether that risk status matched expectations, it doesn't replace seeing
-  the actual answer text). After that comes the claim-metadata match table
+  (`-2`, `-3`, ...) is appended as a fallback.
+
+  The PDF opens with a centered "Claim Eval Report" title and just the identity/provenance
+  fields that belong to neither section below (bucket ID and "Generated at" — the same IST
+  timestamp used in the filename, shown with no timezone label), then two explicitly headed
+  sections:
+
+  - **Document Ingestion** — a compact stat-card row (docs submitted, docs complete, docs
+    failed, ingestion time), using only counts the pipeline actually has (no GPU/pod/quota/
+    concurrency telemetry). A "Failed documents:" list (one `fileName: error` line per entry)
+    follows only when `output.failedDocuments` is non-empty — a clean run's report grows no
+    section for something that didn't happen.
+  - **Claim Processing** — its own stat-card row (accuracy, processing time, risk status match
+    %, answer content match %, plus a 5th citation-match % card only when
+    `namedScores.citationMatch` is defined), then the question-by-question breakdown, the
+    claim-metadata match table, and the overall summary.
+
+  Within Claim Processing, questions are numbered sequentially (Q1, Q2, ...) and ordered by risk
+  status (Detected, then Unsure, then Not Detected) rather than by their original ID, so the
+  highest-risk findings read first. A table header (`Risk Status | Score | Risk Match | Citation
+  Match`) precedes the per-question blocks; each question's heading is followed by a single
+  bordered, colored row of those four short values (the question's actual risk status —
+  distinct from whether it matched — the new 0-100 grader score, whether risk status matched,
+  and `formatCitationMatch`'s verdict), then the Answer and Reason as full-width flowing
+  paragraphs below the row so a single question's content stays together in reading order even
+  across a page break. The "RISK ...:" prefix the real report embeds at the start of each answer
+  is left in place. Raw `<InTextCitation>` tags in the Answer are replaced with small numbered
+  `[n]` markers (`src/lib/extract-cited-file-names.js`'s `formatAnswerWithCitations`, a display
+  copy only — the stored `actualAnswer` in `results.json` keeps its raw tags, since
+  `citationMatch` grading reads citations off the raw text), with a gray "Sources: [n] fileName
+  ..." legend line beneath the answer when it cites anything, entirely absent when it doesn't.
+
+  After the question-by-question breakdown comes the claim-metadata match table
   (`fraudRiskScore` and the three entity fields, expected vs. actual — field names are
   humanized for display, e.g. `fraudRiskScore` reads as "Fraud Risk Score") and an overall
-  summary. A claim that gets skipped (no `bucketId`, or missing the data the PDF needs) is
-  logged via `console.error` with its `bucketId` and a reason, and `main()` prints a final
-  `Wrote N report(s).` summary line, so a run that produces zero PDFs is never silent.
+  summary. A claim that gets skipped (no `bucketId`, or missing the data the PDF needs, including
+  ingestion's `docsSubmitted`/`docsComplete` counts) is logged via `console.error` with its
+  `bucketId` and a reason, and `main()` prints a final `Wrote N report(s).` summary line, so a
+  run that produces zero PDFs is never silent.
 
 ## Setup
 
