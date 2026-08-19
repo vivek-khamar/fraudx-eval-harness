@@ -63,11 +63,71 @@ function parseGraderVerdict(responseOutput) {
 
 const NO_CITATION_RESOLVED_REASON = 'No cited chunk resolved to compare against the expected passage.';
 
-// Fires when at least one of this run's citations DID resolve, just not enough of them to cover
-// every expected passage's position — distinct from NO_CITATION_RESOLVED_REASON, which fires when
-// NONE of the answer's citations resolved at all.
-function noChunkAtPositionReason(position) {
-  return `No cited chunk at position ${position} in this run to compare against this expected passage.`;
+// Fires when this run resolved at least one citation, but every one of them was already claimed
+// by a more-similar expected passage before this one's turn — distinct from
+// NO_CITATION_RESOLVED_REASON, which fires when NONE of the answer's citations resolved at all.
+const NO_MATCHING_CANDIDATE_REASON = 'No unclaimed resolved chunk available to pair with this expected passage.';
+
+// Lowercased alphanumeric word tokens — punctuation and casing don't carry meaning for a cheap
+// overlap check, only the words themselves do.
+function tokenize(text) {
+  return new Set((text || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+}
+
+// Jaccard similarity (intersection over union of word sets) between two chunk texts — a plain,
+// deterministic, dependency-free proxy for "are these two passages about the same thing," used
+// only to decide which actual chunk to pair with which expected passage before spending a real
+// (LLM) grader call on the pair. Two empty texts are defined as 0 similarity, not 1, since two
+// unrelated empty strings shouldn't count as a confident match.
+function jaccardSimilarity(textA, textB) {
+  const setA = tokenize(textA);
+  const setB = tokenize(textB);
+  if (setA.size === 0 || setB.size === 0) {
+    return 0;
+  }
+  let intersection = 0;
+  for (const word of setA) {
+    if (setB.has(word)) {
+      intersection += 1;
+    }
+  }
+  const union = setA.size + setB.size - intersection;
+  return intersection / union;
+}
+
+// Pairs each expected passage with at most one resolved chunk — a one-to-one assignment chosen
+// by content similarity, not citation order, so a genuinely correct answer that cites the same
+// material in a different order than the baseline run did isn't penalized for reordering. Greedy,
+// not globally optimal: every possible (expected, resolved) pair is scored, then claimed
+// highest-similarity-first, skipping any pair where either side is already claimed. Returns an
+// array parallel to expectedChunkTexts — matches[i] is the resolved chunk text paired with
+// expectedChunkTexts[i], or undefined if no unclaimed candidate remained for it (more expected
+// passages than resolved chunks, or a low-similarity leftover after better matches claimed
+// everything usable).
+function matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts) {
+  const candidates = [];
+  for (let i = 0; i < expectedChunkTexts.length; i++) {
+    for (let j = 0; j < resolvedChunkTexts.length; j++) {
+      candidates.push({ i, j, score: jaccardSimilarity(expectedChunkTexts[i], resolvedChunkTexts[j]) });
+    }
+  }
+  // Highest similarity claimed first; Array.prototype.sort is stable, so tied scores (including
+  // the common all-zero case when nothing shares any word) fall back to a deterministic order
+  // rather than an arbitrary one.
+  candidates.sort((a, b) => b.score - a.score);
+
+  const claimedExpected = new Set();
+  const claimedResolved = new Set();
+  const matches = new Array(expectedChunkTexts.length).fill(undefined);
+  for (const { i, j } of candidates) {
+    if (claimedExpected.has(i) || claimedResolved.has(j)) {
+      continue;
+    }
+    matches[i] = resolvedChunkTexts[j];
+    claimedExpected.add(i);
+    claimedResolved.add(j);
+  }
+  return matches;
 }
 
 // A single expectedChunkText entry reports its own reason verbatim (preserving the exact
@@ -84,18 +144,14 @@ function summarizeCitationReason(perExpectedResults) {
 }
 
 // Resolves every citation in this one question's actual answer against chunkGroundingData, then
-// pairs expected passage i directly with this run's i-th resolved citation — ONE grader call per
-// position, no searching across candidates. An expected passage beyond the number of resolved
-// chunks this run's answer actually cited is an automatic non-match with no grader call spent on
-// it, since there's nothing at that position to compare it to; any resolved chunk beyond the
-// number of expected passages is simply unused. This is a deliberate simplification of the prior
-// "does ANY resolved chunk support this passage" search — it trades order-independence for a much
-// lower and more predictable call count, on the assumption that the two runs' citation order
-// roughly corresponds. If that assumption doesn't hold up in practice, this is the first place to
-// revisit. A citation that doesn't resolve at all (missing grounding data entirely, or that
-// specific chunk absent from it) is skipped when building resolvedChunkTexts, not treated as a
-// mismatch by itself. If NO citation resolves at all, this returns false with a fixed reason and
-// makes no grader call.
+// pairs each expected passage with its most content-similar resolved chunk (matchExpectedToResolvedChunks)
+// and spends ONE grader call per pair — no searching every candidate per entry, and no dependence
+// on citation order between the two runs. An expected passage left unpaired (more expected
+// passages than resolved chunks, or every plausible candidate already claimed by a closer match)
+// is an automatic non-match with no grader call spent on it. A citation that doesn't resolve at
+// all (missing grounding data entirely, or that specific chunk absent from it) is skipped when
+// building resolvedChunkTexts, not treated as a mismatch by itself. If NO citation resolves at
+// all, this returns false with a fixed reason and makes no grader call.
 async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer, chunkGroundingData) {
   const citations = extractCitedCitationsFromText(actualAnswer);
   const resolvedChunkTexts = [];
@@ -109,11 +165,13 @@ async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer,
     return { citationMatches: false, citationMatchReason: NO_CITATION_RESOLVED_REASON };
   }
 
+  const matchedChunkTexts = matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts);
+
   const perExpectedResults = [];
   for (let i = 0; i < expectedChunkTexts.length; i++) {
-    const actualChunkText = resolvedChunkTexts[i];
+    const actualChunkText = matchedChunkTexts[i];
     if (actualChunkText === undefined) {
-      perExpectedResults.push({ matched: false, reason: noChunkAtPositionReason(i + 1) });
+      perExpectedResults.push({ matched: false, reason: NO_MATCHING_CANDIDATE_REASON });
       continue;
     }
     const prompt = buildChunkTextMatchPrompt(expectedChunkTexts[i], actualChunkText);
@@ -209,3 +267,5 @@ module.exports.findActualQuestion = findActualQuestion;
 module.exports.buildQuestionGradingPrompt = buildQuestionGradingPrompt;
 module.exports.buildChunkTextMatchPrompt = buildChunkTextMatchPrompt;
 module.exports.parseGraderVerdict = parseGraderVerdict;
+module.exports.jaccardSimilarity = jaccardSimilarity;
+module.exports.matchExpectedToResolvedChunks = matchExpectedToResolvedChunks;
