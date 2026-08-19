@@ -8,7 +8,10 @@ const { formatAnswerWithCitations } = require('../src/lib/extract-cited-file-nam
 const { computeAccuracy, scoreDashboard, dashboardHasErrors } = require('./score-dashboard');
 
 const MARGIN = 50;
-const COLUMN_GAP = 10;
+// Zero, not a real gap: adjacent cells' border boxes must share the exact same edge
+// coordinate so drawTableRow reads as one unified table (a shared line between columns)
+// rather than a row of individually bordered, visually separate boxes.
+const COLUMN_GAP = 0;
 
 function formatTimestampForFilename(isoTimestamp) {
   return isoTimestamp.replace(/:/g, '-').replace(/\.\d+Z$/, '');
