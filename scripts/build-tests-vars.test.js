@@ -127,19 +127,20 @@ test('buildExpectedQa dedupes byte-identical chunk texts resolved from different
   assert.deepEqual(result[0].expectedChunkText, ['Same passage.']);
 });
 
-test('buildExpectedQa caps expectedChunkText at 5 entries, keeping the first 5 in citation order', () => {
-  const citationTags = Array.from({ length: 8 }, (_, i) =>
+test('buildExpectedQa caps expectedChunkText at 10 entries, keeping the first 10 in citation order', () => {
+  const citationTags = Array.from({ length: 13 }, (_, i) =>
     `<InTextCitation fileName="f${i}.pdf" documentId="doc-${i}" chunkId="chunk-${i}"></InTextCitation>`
   ).join(' ');
   const questions = [{ predefinedQuestionId: 1, question: 'Q1?', answer: citationTags, riskStatus: 'RISK_DETECTED' }];
   const grounding = new Map(
-    Array.from({ length: 8 }, (_, i) => [s3Client.chunkKey(`doc-${i}`, `chunk-${i}`), `Passage ${i}.`])
+    Array.from({ length: 13 }, (_, i) => [s3Client.chunkKey(`doc-${i}`, `chunk-${i}`), `Passage ${i}.`])
   );
 
   const result = buildExpectedQa(questions, grounding);
 
   assert.deepEqual(result[0].expectedChunkText, [
     'Passage 0.', 'Passage 1.', 'Passage 2.', 'Passage 3.', 'Passage 4.',
+    'Passage 5.', 'Passage 6.', 'Passage 7.', 'Passage 8.', 'Passage 9.',
   ]);
 });
 

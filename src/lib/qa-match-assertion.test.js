@@ -323,15 +323,14 @@ test('qaMatchAssertion computes citationMatch via chunk-text semantic match usin
   assert.equal(result.namedScores.citationMatch, 0.5); // 1 of 2 graded questions matched
 });
 
-test('qaMatchAssertion treats citing any one of multiple chunks as a match, not requiring all of them', async (t) => {
-  let chunkCallCount = 0;
+test('qaMatchAssertion pairs expected passage i with this run\'s i-th resolved citation directly, requiring every position to match', async (t) => {
+  const prompts = [];
   mockLoadApiProvider(t, async (prompt) => {
     if (isChunkTextMatchPrompt(prompt)) {
-      chunkCallCount += 1;
-      const matches = chunkCallCount === 2; // first cited chunk fails, second matches
-      return { output: JSON.stringify({ matches, reason: matches ? 'second chunk matches' : 'first chunk does not match' }) };
+      prompts.push(prompt);
+      return { output: JSON.stringify({ matches: true, reason: `position ${prompts.length} matches` }) };
     }
-    return { output: JSON.stringify({ matches: true, reason: 'ok' }) };
+    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
   });
 
   const output = fakeOutputWithCitations();
@@ -342,30 +341,29 @@ test('qaMatchAssertion treats citing any one of multiple chunks as a match, not 
   output.chunkGroundingData.set('doc-1:chunk-1', 'first chunk text');
   output.chunkGroundingData.set('doc-1:chunk-2', 'second chunk text');
 
-  // This test isolates question 1's multi-citation "at least one" behavior. Question 2 is
-  // also graded for citations by default (fakeContextWithExpectedChunkText) and its citation
-  // always resolves (fakeOutputWithCitations), which would add an uncounted grader call and
-  // break the chunkCallCount assertion below — so it's excluded from citation grading here.
+  // This test isolates question 1's positional-pairing behavior. Question 2 is also graded
+  // for citations by default (fakeContextWithExpectedChunkText) and its citation always
+  // resolves (fakeOutputWithCitations), which would add an uncounted grader call — so it's
+  // excluded from citation grading here.
   const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[0].expectedChunkText = ['gold passage A', 'gold passage B'];
   context.vars.expected.qa[1].expectedChunkText = undefined;
 
   const result = await qaMatchAssertion(output, context);
 
-  assert.equal(chunkCallCount, 2, 'must check both cited chunks before concluding a match');
+  assert.equal(prompts.length, 2, 'exactly one call per expected passage position, no fallback search across candidates');
+  assert.match(prompts[0], /gold passage A/);
+  assert.match(prompts[0], /first chunk text/);
+  assert.match(prompts[1], /gold passage B/);
+  assert.match(prompts[1], /second chunk text/);
   assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
-  assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'second chunk matches');
 });
 
-test('qaMatchAssertion requires EVERY expectedChunkText entry to be supported, not just one, since a question can draw on several distinct source chunks', async (t) => {
-  let callCount = 0;
+test('qaMatchAssertion reports citationMatches false when one position\'s pairing does not match, surfacing that position\'s own reason', async (t) => {
   mockLoadApiProvider(t, async (prompt) => {
     if (isChunkTextMatchPrompt(prompt)) {
-      callCount += 1;
-      // entry A matches chunk-1 immediately (1 call); entry B fails chunk-1 then matches chunk-2 (2 calls)
-      if (callCount === 1) return { output: JSON.stringify({ matches: true, reason: 'entryA matched chunk-1' }) };
-      if (callCount === 2) return { output: JSON.stringify({ matches: false, reason: 'entryB does not match chunk-1' }) };
-      if (callCount === 3) return { output: JSON.stringify({ matches: true, reason: 'entryB matched chunk-2' }) };
-      throw new Error(`unexpected extra chunk-match grader call #${callCount}`);
+      const matches = !prompt.includes('gold passage B'); // position 0 (A) matches, position 1 (B) does not
+      return { output: JSON.stringify({ matches, reason: matches ? 'position A matches' : 'position B does not match its paired chunk' }) };
     }
     return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
   });
@@ -380,45 +378,67 @@ test('qaMatchAssertion requires EVERY expectedChunkText entry to be supported, n
 
   const context = fakeContextWithExpectedChunkText();
   context.vars.expected.qa[0].expectedChunkText = ['gold passage A', 'gold passage B'];
-  context.vars.expected.qa[1].expectedChunkText = undefined; // isolate question 1's call count
-
-  const result = await qaMatchAssertion(output, context);
-
-  assert.equal(callCount, 3, 'entry A resolves in 1 call, entry B in 2 calls');
-  assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
-});
-
-test('qaMatchAssertion reports citationMatches false when at least one expectedChunkText entry finds no supporting chunk, even though others do', async (t) => {
-  let callCount = 0;
-  mockLoadApiProvider(t, async (prompt) => {
-    if (isChunkTextMatchPrompt(prompt)) {
-      callCount += 1;
-      // entry A matches chunk-1 immediately; entry B never matches either chunk
-      if (callCount === 1) return { output: JSON.stringify({ matches: true, reason: 'entryA matched chunk-1' }) };
-      if (callCount === 2) return { output: JSON.stringify({ matches: false, reason: 'entryB does not match chunk-1' }) };
-      if (callCount === 3) return { output: JSON.stringify({ matches: false, reason: 'entryB does not match chunk-2' }) };
-      throw new Error(`unexpected extra chunk-match grader call #${callCount}`);
-    }
-    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
-  });
-
-  const output = fakeOutputWithCitations();
-  output.report.questions[0].answer = [
-    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
-    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
-  ].join(' ');
-  output.chunkGroundingData.set('doc-1:chunk-1', 'first chunk text');
-  output.chunkGroundingData.set('doc-1:chunk-2', 'second chunk text');
-
-  const context = fakeContextWithExpectedChunkText();
-  context.vars.expected.qa[0].expectedChunkText = ['gold passage A', 'gold passage B'];
-  context.vars.expected.qa[1].expectedChunkText = undefined; // isolate question 1's call count
+  context.vars.expected.qa[1].expectedChunkText = undefined;
 
   const result = await qaMatchAssertion(output, context);
 
   assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
-  // The reason must surface the entry that actually failed, not the one that matched.
-  assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'entryB does not match chunk-2');
+  assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'position B does not match its paired chunk');
+});
+
+test('qaMatchAssertion treats an expected passage beyond this run\'s resolved-citation count as an automatic non-match, spending no grader call on it', async (t) => {
+  let chunkCallCount = 0;
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      chunkCallCount += 1;
+      return { output: JSON.stringify({ matches: true, reason: 'position 1 matches' }) };
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  // Only ONE citation in this run's answer, but TWO expected gold passages.
+  output.report.questions[0].answer = 'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>';
+  output.chunkGroundingData.set('doc-1:chunk-1', 'first chunk text');
+
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[0].expectedChunkText = ['gold passage A', 'gold passage B'];
+  context.vars.expected.qa[1].expectedChunkText = undefined;
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(chunkCallCount, 1, 'only one grader call, for the one position that has a resolved chunk to compare against');
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
+  assert.match(result.perQuestionBreakdown[0].citationMatchReason, /No cited chunk at position 2/);
+});
+
+test('qaMatchAssertion ignores any of this run\'s resolved citations beyond the number of expected passages', async (t) => {
+  let chunkCallCount = 0;
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      chunkCallCount += 1;
+      return { output: JSON.stringify({ matches: true, reason: 'position 1 matches' }) };
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  // TWO citations in this run's answer, but only ONE expected gold passage.
+  output.report.questions[0].answer = [
+    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+  ].join(' ');
+  output.chunkGroundingData.set('doc-1:chunk-1', 'first chunk text');
+  output.chunkGroundingData.set('doc-1:chunk-2', 'second chunk text');
+
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[0].expectedChunkText = ['gold passage A'];
+  context.vars.expected.qa[1].expectedChunkText = undefined;
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(chunkCallCount, 1, 'only one expected passage exists, so only one grader call is made regardless of extra resolved citations');
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
 });
 
 test('qaMatchAssertion skips a citation whose (documentId, chunkId) is not in chunkGroundingData, without crashing', async (t) => {

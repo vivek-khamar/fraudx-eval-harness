@@ -63,24 +63,11 @@ function parseGraderVerdict(responseOutput) {
 
 const NO_CITATION_RESOLVED_REASON = 'No cited chunk resolved to compare against the expected passage.';
 
-// For one golden passage, asks the grader whether ANY of the actual resolved chunks semantically
-// supports it — "at least one" semantics per expected passage, same as the single-passage design
-// this generalizes. Stops at the first match.
-async function matchesAnyResolvedChunk(provider, expectedChunkText, resolvedChunkTexts) {
-  let lastReason;
-  for (const chunkText of resolvedChunkTexts) {
-    const prompt = buildChunkTextMatchPrompt(expectedChunkText, chunkText);
-    const response = await provider.callApi(prompt);
-    if (response.error) {
-      throw new Error(response.error);
-    }
-    const { matches, reason } = parseGraderVerdict(response.output);
-    if (matches) {
-      return { matched: true, reason };
-    }
-    lastReason = reason;
-  }
-  return { matched: false, reason: lastReason };
+// Fires when at least one of this run's citations DID resolve, just not enough of them to cover
+// every expected passage's position — distinct from NO_CITATION_RESOLVED_REASON, which fires when
+// NONE of the answer's citations resolved at all.
+function noChunkAtPositionReason(position) {
+  return `No cited chunk at position ${position} in this run to compare against this expected passage.`;
 }
 
 // A single expectedChunkText entry reports its own reason verbatim (preserving the exact
@@ -97,12 +84,18 @@ function summarizeCitationReason(perExpectedResults) {
 }
 
 // Resolves every citation in this one question's actual answer against chunkGroundingData, then
-// requires EVERY entry in expectedChunkTexts to be supported by at least one resolved chunk — a
-// question's answer can draw on several distinct source chunks, and each golden passage curated
-// for it should actually be grounded, not just one lucky match. A citation that doesn't resolve
-// (missing grounding data entirely, or that specific chunk absent from it) is skipped, not treated
-// as a mismatch by itself. If NO citation resolves at all, this returns false with a fixed reason
-// and makes no grader call.
+// pairs expected passage i directly with this run's i-th resolved citation — ONE grader call per
+// position, no searching across candidates. An expected passage beyond the number of resolved
+// chunks this run's answer actually cited is an automatic non-match with no grader call spent on
+// it, since there's nothing at that position to compare it to; any resolved chunk beyond the
+// number of expected passages is simply unused. This is a deliberate simplification of the prior
+// "does ANY resolved chunk support this passage" search — it trades order-independence for a much
+// lower and more predictable call count, on the assumption that the two runs' citation order
+// roughly corresponds. If that assumption doesn't hold up in practice, this is the first place to
+// revisit. A citation that doesn't resolve at all (missing grounding data entirely, or that
+// specific chunk absent from it) is skipped when building resolvedChunkTexts, not treated as a
+// mismatch by itself. If NO citation resolves at all, this returns false with a fixed reason and
+// makes no grader call.
 async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer, chunkGroundingData) {
   const citations = extractCitedCitationsFromText(actualAnswer);
   const resolvedChunkTexts = [];
@@ -117,8 +110,19 @@ async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer,
   }
 
   const perExpectedResults = [];
-  for (const expectedChunkText of expectedChunkTexts) {
-    perExpectedResults.push(await matchesAnyResolvedChunk(provider, expectedChunkText, resolvedChunkTexts));
+  for (let i = 0; i < expectedChunkTexts.length; i++) {
+    const actualChunkText = resolvedChunkTexts[i];
+    if (actualChunkText === undefined) {
+      perExpectedResults.push({ matched: false, reason: noChunkAtPositionReason(i + 1) });
+      continue;
+    }
+    const prompt = buildChunkTextMatchPrompt(expectedChunkTexts[i], actualChunkText);
+    const response = await provider.callApi(prompt);
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    const { matches, reason } = parseGraderVerdict(response.output);
+    perExpectedResults.push({ matched: matches, reason });
   }
 
   return {

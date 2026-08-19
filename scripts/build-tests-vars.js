@@ -9,11 +9,13 @@ const s3Client = require('../src/s3-client');
 const resolveModelId = require('../src/lib/resolve-model-id');
 const { extractCitedCitationsFromText } = require('../src/lib/extract-cited-file-names');
 
-// qa-match-assertion.js requires every expectedChunkText entry to match, so an uncapped list
-// makes that assertion both slower (one grader call per entry) and stricter than intended —
-// a real claim's question can carry dozens of citations. Cap keeps this bounded and matches
-// this codebase's existing bounded-truncation style (see DOCUMENT_TEXT_CHAR_LIMIT in src/provider.js).
-const MAX_EXPECTED_CHUNKS_PER_QUESTION = 5;
+// qa-match-assertion.js now pairs expected passage i with this run's i-th resolved citation
+// directly (positional, one grader call per position) rather than searching every candidate
+// per entry, so cost no longer multiplies with candidate count the way it used to. This cap is
+// now a looser safety net against a pathological question with dozens of citations, not the
+// primary cost control — matches this codebase's existing bounded-truncation style (see
+// DOCUMENT_TEXT_CHAR_LIMIT in src/provider.js).
+const MAX_EXPECTED_CHUNKS_PER_QUESTION = 10;
 
 // Pure. Builds this run's one promptfoo test case in exactly the vars shape
 // qa-match-assertion.js / metadata-match-assertion.js / provider.js already

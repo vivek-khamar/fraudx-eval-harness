@@ -43,26 +43,35 @@ own report, not a hand-curated answer key.
       the freshly-created bucket — see below) — populating that question's `expectedChunkText`
       **array of strings** automatically, not by hand. A question's answer can draw on several
       distinct source chunks, so `expectedChunkText` can list more than one passage when that's
-      the case; a question whose cited chunks don't resolve gets no `expectedChunkText` at all.
-      For every question that ends up with a non-empty array, `citationMatch` resolves that
-      question's actually-cited `(documentId, chunkId)` pairs (from the freshly-processed
-      bucket's own report) against `output.chunkGroundingData` and, for **every entry** in
-      `expectedChunkText`, asks the grader whether **any** resolved chunk's text semantically
-      supports that entry (exact wording doesn't matter, meaning does) — one grader call per
-      (expected passage × resolved citation) pair tried, on top of the existing per-question
-      answer-content call. `citationMatches` for the question is `true` only if **every** entry in
-      `expectedChunkText` finds a supporting resolved chunk — a single unmatched entry fails the
-      whole question, even if the others matched; `citationMatchReason` reports the unmatched
-      entries' own reasons when any fail, or all entries' reasons joined with `" | "` when every
-      entry matches (and just that one entry's own reason, unwrapped, for the common single-entry
-      case). A citation that doesn't resolve (missing grounding data, or that specific chunk
-      absent from it) is skipped rather than counted as a mismatch by itself; if *no* citation
-      resolves at all, the question fails with a fixed reason and no grader call is made. Neither
-      `documentId` nor `chunkId` is ever compared directly — both are per-ingestion and change every
-      run — only the chunk *text* they resolve to is compared. Questions with no `expectedChunkText`
-      are excluded from this fraction. If *no* question in the existing bucket's report has one,
-      `citationMatch` is `undefined` (not `0`). `citationMatch` is reported for visibility (in
-      `namedScores` and the PDF) but is not part of the accuracy formula below.
+      the case; a question whose cited chunks don't resolve gets no `expectedChunkText` at all
+      (capped at `MAX_EXPECTED_CHUNKS_PER_QUESTION` — 10 — entries, first-cited-first-kept, on
+      the rare question with more distinct cited chunks than that). For every question that ends
+      up with a non-empty array, `citationMatch` resolves that question's actually-cited
+      `(documentId, chunkId)` pairs (from the freshly-processed bucket's own report) against
+      `output.chunkGroundingData`, then pairs expected passage *i* directly with this run's *i*-th
+      resolved citation — **one grader call per position**, not a search across every resolved
+      chunk — and asks whether that one resolved chunk's text semantically supports that one
+      expected passage (exact wording doesn't matter, meaning does). This is a deliberate
+      simplification traded in for a much lower and more predictable call count (at most
+      `expectedChunkText.length` calls, never `entries × candidates`): it assumes the two runs'
+      citation order roughly corresponds, so a genuinely correct answer that just cites things in
+      a different order than the baseline run did can register as a mismatch. `citationMatches`
+      for the question is `true` only if **every** position matches — a single unmatched position
+      fails the whole question, even if the others matched; `citationMatchReason` reports the
+      unmatched positions' own reasons when any fail, or all positions' reasons joined with `" | "`
+      when every position matches (and just that one position's own reason, unwrapped, for the
+      common single-entry case). An expected passage whose position has no corresponding resolved
+      citation in this run (this run cited fewer chunks than the baseline did) is an automatic
+      non-match with no grader call spent on it; any resolved citation beyond the number of
+      expected passages is simply unused. A citation that doesn't resolve (missing grounding data,
+      or that specific chunk absent from it) is skipped rather than counted as a mismatch by
+      itself; if *no* citation resolves at all, the question fails with a fixed reason and no
+      grader call is made. Neither `documentId` nor `chunkId` is ever compared directly — both are
+      per-ingestion and change every run — only the chunk *text* they resolve to is compared.
+      Questions with no `expectedChunkText` are excluded from this fraction. If *no* question in
+      the existing bucket's report has one, `citationMatch` is `undefined` (not `0`).
+      `citationMatch` is reported for visibility (in `namedScores` and the PDF) but is not part of
+      the accuracy formula below.
 
     Questions are matched between the existing bucket's `expected.qa` and the freshly-processed
     bucket's real report by `question` text, not `predefinedQuestionId` — like `documentId`/
