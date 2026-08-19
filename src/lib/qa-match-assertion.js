@@ -169,7 +169,7 @@ async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer,
     }
   }
   if (resolvedChunkTexts.length === 0) {
-    return { citationMatches: false, citationMatchReason: NO_CITATION_RESOLVED_REASON };
+    return { citationMatches: false, citationMatchReason: NO_CITATION_RESOLVED_REASON, citationMatchScore: 0 };
   }
 
   const matchedExpectedTexts = greedyPairBySimilarity(resolvedChunkTexts, expectedChunkTexts);
@@ -190,9 +190,11 @@ async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer,
     perPairingResults.push({ matched: matches, reason });
   }
 
+  const matchedCount = perPairingResults.filter((r) => r.matched).length;
   return {
     citationMatches: perPairingResults.every((r) => r.matched),
     citationMatchReason: summarizeCitationReason(perPairingResults),
+    citationMatchScore: Math.round((matchedCount / perPairingResults.length) * 100),
   };
 }
 
@@ -220,10 +222,12 @@ async function qaMatchAssertion(output, context) {
 
     let citationMatches;
     let citationMatchReason;
+    let citationMatchScore;
     if (Array.isArray(q.expectedChunkText) && q.expectedChunkText.length > 0) {
       const chunkResult = await computeChunkTextMatch(provider, q.expectedChunkText, actualAnswer, output.chunkGroundingData);
       citationMatches = chunkResult.citationMatches;
       citationMatchReason = chunkResult.citationMatchReason;
+      citationMatchScore = chunkResult.citationMatchScore;
     }
 
     perQuestionBreakdown.push({
@@ -238,6 +242,7 @@ async function qaMatchAssertion(output, context) {
       actualCitedFileNames,
       citationMatches,
       citationMatchReason,
+      citationMatchScore,
     });
   }
   const answerContentMatch = perQuestionBreakdown.filter((v) => v.matches).length / perQuestionBreakdown.length;

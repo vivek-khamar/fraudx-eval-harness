@@ -80,7 +80,10 @@ own report, not a hand-curated answer key.
       from this fraction. If *no* question in the existing bucket's report has one, `citationMatch`
       is `undefined` (not `0`). `citationMatch` is
       reported for visibility (in `namedScores` and the PDF) but is not part of the accuracy
-      formula below.
+      formula below. Each graded question also gets its own `citationMatchScore` — the percentage
+      of *that question's* pairings that matched (not just the all-or-nothing `citationMatches`
+      boolean), `0` when no citation resolved at all — which is what the PDF's per-question
+      Citation Match column actually shows (see below).
 
     Questions are matched between the existing bucket's `expected.qa` and the freshly-processed
     bucket's real report by `question` text, not `predefinedQuestionId` — like `documentId`/
@@ -162,7 +165,13 @@ own report, not a hand-curated answer key.
   Match`) precedes the per-question blocks; each question's heading is followed by a single
   colored row of those four short values (the question's actual risk status —
   distinct from whether it matched — the new 0-100 grader score, whether risk status matched,
-  and `formatCitationMatch`'s verdict), then the Answer and Reason as full-width flowing
+  and `citationMatchScore` as a `formatScore`-rendered percentage — the fraction of this
+  question's citation pairings that matched, `N/A` when the question wasn't graded for citations).
+  The grader's own descriptive `citationMatchReason` text is computed and stored in
+  `results.json`'s `perQuestionBreakdown` exactly as before — it's just no longer printed in the
+  PDF, since it could run to several paragraphs per question; read it directly from
+  `results.json` for the full explanation behind any citation-match percentage. Then the Answer
+  and Reason render as full-width flowing
   paragraphs below the row so a single question's content stays together in reading order even
   across a page break. The "RISK ...:" prefix the real report embeds at the start of each answer
   is left in place. Raw `<InTextCitation>` tags in the Answer are replaced with small numbered

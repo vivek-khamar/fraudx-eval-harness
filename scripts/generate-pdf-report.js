@@ -62,16 +62,6 @@ function formatScore(score) {
   return typeof score === 'number' ? `${Math.round(score)}%` : 'N/A';
 }
 
-function formatCitationMatch(entry) {
-  if (entry.citationMatches == null) {
-    return 'N/A';
-  }
-  if (entry.citationMatches) {
-    return 'YES';
-  }
-  return `NO (${entry.citationMatchReason})`;
-}
-
 // Renders the enum-style riskStatus (RISK_DETECTED / UNSURE / RISK_NOT_DETECTED) for
 // display, spacing out the underscores; 'N/A' when missing.
 function formatRiskStatus(riskStatus) {
@@ -89,11 +79,6 @@ function riskStatusColor(riskStatus) {
 
 function booleanMatchColor(matches) {
   return matches ? 'green' : 'red';
-}
-
-function citationMatchColor(entry) {
-  if (entry.citationMatches == null) return 'gray';
-  return entry.citationMatches ? 'green' : 'red';
 }
 
 const RISK_STATUS_ORDER = ['RISK_DETECTED', 'UNSURE', 'RISK_NOT_DETECTED'];
@@ -304,13 +289,13 @@ function renderClaimPdf(result, timestamp, filePath) {
   doc.moveDown(0.75);
 
   doc.fontSize(10);
-  // Column widths are not evenly split: Citation Match holds the grader's free-text
-  // citationMatchReason (via formatCitationMatch's "NO (<reason>)" case), which is
-  // routinely much longer than the other three columns' bounded enum/percentage/
-  // YES-NO content, so it gets the lion's share of the row's total width budget.
-  // The other three are sized just above the widest real value each can hold
-  // (e.g. "RISK NOT DETECTED") so no realistic value in those columns wraps.
-  const qWidths = [110, 32, 58, 282];
+  // Citation Match now holds a short percentage (formatScore(entry.citationMatchScore)), same
+  // bounded shape as the Score column — the grader's free-text citationMatchReason is computed
+  // and stored in results.json same as always, just no longer rendered here. All four columns
+  // are sized just above the widest real value each can hold (e.g. "RISK NOT DETECTED") so no
+  // realistic value in any of them wraps, which is what keeps this row safe from the
+  // pagination-tearing bug the flowing-paragraph layout below it exists to avoid.
+  const qWidths = [140, 70, 90, 70];
   drawTableRow(doc, ['Risk Status', 'Score', 'Risk Match', 'Citation Match'], qWidths, { bold: true });
   doc.moveDown(0.5);
 
@@ -321,11 +306,6 @@ function renderClaimPdf(result, timestamp, filePath) {
     // question's content stays together in reading order even if it spans a page
     // break — unlike the fixed-column drawTableRow layout above, which tears a
     // wrapped cell's remaining columns onto whatever page the cursor lands on.
-    // That row above stays safe from that page-break tearing because it's bounded
-    // in *height* (a formatted enum, a percentage, YES/NO, and formatCitationMatch's
-    // verdict all wrap to at most a couple of lines at the qWidths column widths
-    // above, even though the Citation Match cell's text length itself is unbounded —
-    // hence that column getting most of the row's width budget).
     doc.fontSize(11).font('Helvetica-Bold').text(`Q${index + 1}: ${entry.question}`, { width: usableWidth });
     doc.moveDown(0.5);
 
@@ -336,10 +316,10 @@ function renderClaimPdf(result, timestamp, filePath) {
         formatRiskStatus(entry.riskStatus),
         formatScore(entry.score),
         entry.riskStatusMatches ? 'YES' : 'NO',
-        formatCitationMatch(entry),
+        formatScore(entry.citationMatchScore),
       ],
       qWidths,
-      { colors: [riskStatusColor(entry.riskStatus), null, booleanMatchColor(entry.riskStatusMatches), citationMatchColor(entry)] }
+      { colors: [riskStatusColor(entry.riskStatus), null, booleanMatchColor(entry.riskStatusMatches), null] }
     );
     doc.moveDown(0.5);
 
@@ -482,10 +462,8 @@ module.exports = {
   sortByRiskStatus,
   uniqueFilePath,
   formatScore,
-  formatCitationMatch,
   formatRiskStatus,
   riskStatusColor,
   booleanMatchColor,
-  citationMatchColor,
   drawStatCardRow,
 };

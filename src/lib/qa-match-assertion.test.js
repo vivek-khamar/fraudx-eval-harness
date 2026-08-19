@@ -169,6 +169,7 @@ test('qaMatchAssertion returns one perQuestionBreakdown entry per question', asy
     actualCitedFileNames: [],
     citationMatches: undefined,
     citationMatchReason: undefined,
+    citationMatchScore: undefined,
   });
 });
 
@@ -385,10 +386,63 @@ test('qaMatchAssertion computes citationMatch via chunk-text semantic match usin
 
   assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
   assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'Chunk supports the passage');
+  assert.equal(result.perQuestionBreakdown[0].citationMatchScore, 100);
   assert.equal(result.perQuestionBreakdown[1].citationMatches, false);
   assert.equal(result.perQuestionBreakdown[1].citationMatchReason, 'Chunk is unrelated');
+  assert.equal(result.perQuestionBreakdown[1].citationMatchScore, 0);
   assert.equal(result.perQuestionBreakdown[2].citationMatches, undefined);
+  assert.equal(result.perQuestionBreakdown[2].citationMatchScore, undefined);
   assert.equal(result.namedScores.citationMatch, 0.5); // 1 of 2 graded questions matched
+});
+
+test('qaMatchAssertion computes citationMatchScore as the fraction of this question\'s pairings that matched, not just the all-or-nothing citationMatches boolean', async (t) => {
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      // Two of this run's three cited chunks match, one does not.
+      const matches = !prompt.includes('chunk-3-text');
+      return { output: JSON.stringify({ matches, reason: matches ? 'matches' : 'does not match' }) };
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  output.report.questions[0].answer = [
+    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+    'and <InTextCitation fileName="a3.pdf" documentId="doc-1" chunkId="chunk-3"></InTextCitation>',
+  ].join(' ');
+  output.chunkGroundingData.set('doc-1:chunk-1', 'chunk-1-text about billing');
+  output.chunkGroundingData.set('doc-1:chunk-2', 'chunk-2-text about billing');
+  output.chunkGroundingData.set('doc-1:chunk-3', 'chunk-3-text about billing');
+
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[0].expectedChunkText = ['gold passage about billing A', 'gold passage about billing B', 'gold passage about billing C'];
+  context.vars.expected.qa[1].expectedChunkText = undefined;
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, false); // not ALL matched
+  assert.equal(result.perQuestionBreakdown[0].citationMatchScore, 67); // 2 of 3 matched, rounded
+});
+
+test('qaMatchAssertion sets citationMatchScore to 0 (not undefined) when no citation resolves at all', async (t) => {
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      throw new Error('grader must not be called for a citation that never resolved');
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  output.report.questions[0].answer = 'see <InTextCitation fileName="missing.pdf" documentId="doc-x" chunkId="chunk-x"></InTextCitation>';
+
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[1].expectedChunkText = undefined;
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
+  assert.equal(result.perQuestionBreakdown[0].citationMatchScore, 0);
 });
 
 test('qaMatchAssertion pairs each resolved citation with its most similar expected passage, spending one call per pair, even when this run cites them in a different order than the baseline', async (t) => {

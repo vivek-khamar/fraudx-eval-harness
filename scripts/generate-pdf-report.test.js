@@ -16,11 +16,9 @@ const {
   sortByRiskStatus,
   uniqueFilePath,
   formatScore,
-  formatCitationMatch,
   formatRiskStatus,
   riskStatusColor,
   booleanMatchColor,
-  citationMatchColor,
   drawStatCardRow,
 } = require('./generate-pdf-report');
 
@@ -205,22 +203,6 @@ test('sortByRiskStatus does not mutate the input array', () => {
   assert.deepEqual(input, copy);
 });
 
-test('formatCitationMatch renders YES for a matching citation', () => {
-  assert.equal(formatCitationMatch({ citationMatches: true }), 'YES');
-});
-
-test('formatCitationMatch renders NO with the grader\'s reason for a non-matching citation', () => {
-  assert.equal(
-    formatCitationMatch({ citationMatches: false, citationMatchReason: 'The cited passage does not mention the expected entity.' }),
-    'NO (The cited passage does not mention the expected entity.)'
-  );
-});
-
-test('formatCitationMatch renders N/A when citationMatches is undefined', () => {
-  assert.equal(formatCitationMatch({ citationMatches: undefined }), 'N/A');
-  assert.equal(formatCitationMatch({ citationMatches: null }), 'N/A');
-});
-
 test('formatScore renders a rounded percentage for a numeric score', () => {
   assert.equal(formatScore(87), '87%');
   assert.equal(formatScore(87.6), '88%');
@@ -254,13 +236,6 @@ test('riskStatusColor maps RISK_DETECTED to red, RISK_NOT_DETECTED to green, UNS
 test('booleanMatchColor maps true to green and false to red', () => {
   assert.equal(booleanMatchColor(true), 'green');
   assert.equal(booleanMatchColor(false), 'red');
-});
-
-test('citationMatchColor maps true to green, false to red, and null/undefined (N/A) to gray', () => {
-  assert.equal(citationMatchColor({ citationMatches: true }), 'green');
-  assert.equal(citationMatchColor({ citationMatches: false }), 'red');
-  assert.equal(citationMatchColor({ citationMatches: undefined }), 'gray');
-  assert.equal(citationMatchColor({ citationMatches: null }), 'gray');
 });
 
 test('uniqueFilePath returns the given path unchanged when nothing exists there yet', (t) => {
@@ -749,7 +724,7 @@ test('generatePdfReports logs a console.error mentioning the bucketId of a claim
   );
 });
 
-test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s reason), and N/A per question', async (t) => {
+test('generatePdfReports renders Citation Match as a percentage (citationMatchScore), not the grader\'s descriptive reason text', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -759,14 +734,22 @@ test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s r
     (c) => c.assertion.metric === 'qa_match'
   );
   qaMatchComponent.perQuestionBreakdown = [
-    { predefinedQuestionId: 1, question: 'MATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, score: 95, reason: 'r', actualCitedFileNames: ['a.pdf'], citationMatches: true, citationMatchReason: 'Matches the expected passage.' },
-    { predefinedQuestionId: 2, question: 'MISMATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', riskStatusMatches: false, matches: true, score: 40, reason: 'r', actualCitedFileNames: ['c.pdf'], citationMatches: false, citationMatchReason: 'The cited passage is unrelated to the expected passage.' },
-    { predefinedQuestionId: 3, question: 'UNGRADED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', riskStatusMatches: true, matches: true, score: 75, reason: 'r', actualCitedFileNames: ['z.pdf'], citationMatches: undefined, citationMatchReason: undefined },
+    { predefinedQuestionId: 1, question: 'MATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, score: 95, reason: 'r', actualCitedFileNames: ['a.pdf'], citationMatches: true, citationMatchReason: 'Matches the expected passage, a lengthy descriptive reason from the grader.', citationMatchScore: 100 },
+    { predefinedQuestionId: 2, question: 'MISMATCHED-QUESTION', actualAnswer: 'a', riskStatus: 'UNSURE', riskStatusMatches: false, matches: true, score: 40, reason: 'r', actualCitedFileNames: ['c.pdf'], citationMatches: false, citationMatchReason: 'The cited passage is unrelated to the expected passage, a lengthy descriptive reason from the grader.', citationMatchScore: 0 },
+    { predefinedQuestionId: 3, question: 'UNGRADED-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_NOT_DETECTED', riskStatusMatches: true, matches: true, score: 75, reason: 'r', actualCitedFileNames: ['z.pdf'], citationMatches: undefined, citationMatchReason: undefined, citationMatchScore: undefined },
   ];
   fs.writeFileSync(resultsPath, JSON.stringify(fixture));
   const reportsDir = path.join(tmpDir, 'reports');
 
   const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  // The descriptive citationMatchReason text must still be readable directly from results.json
+  // (untouched by this change — only the PDF stops rendering it) for whenever it's wanted later.
+  const storedResults = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+  const storedBreakdown = storedResults.results.results[0].gradingResult.componentResults
+    .find((c) => c.assertion.metric === 'qa_match').perQuestionBreakdown;
+  assert.equal(storedBreakdown[0].citationMatchReason, 'Matches the expected passage, a lengthy descriptive reason from the grader.');
+  assert.equal(storedBreakdown[1].citationMatchReason, 'The cited passage is unrelated to the expected passage, a lengthy descriptive reason from the grader.');
 
   const parser = new PDFParse({ data: fs.readFileSync(filePath) });
   let text;
@@ -781,9 +764,10 @@ test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s r
   // UNGRADED (RISK_NOT_DETECTED) third — so these markers already appear in this order.
   // Each fixture entry has a distinct (formatted) riskStatus, so it doubles as an
   // unambiguous per-question anchor for the values that follow it.
-  assert.match(text, /MATCHED-QUESTION[\s\S]*?RISK DETECTED[\s\S]*?95%[\s\S]*?YES/);
-  assert.match(text, /MISMATCHED-QUESTION[\s\S]*?UNSURE[\s\S]*?40%[\s\S]*?NO \(The cited passage is unrelated to the expected passage\.\)/);
+  assert.match(text, /MATCHED-QUESTION[\s\S]*?RISK DETECTED[\s\S]*?95%[\s\S]*?YES[\s\S]*?100%/);
+  assert.match(text, /MISMATCHED-QUESTION[\s\S]*?UNSURE[\s\S]*?40%[\s\S]*?NO[\s\S]*?0%/);
   assert.match(text, /UNGRADED-QUESTION[\s\S]*?RISK NOT DETECTED[\s\S]*?75%[\s\S]*?N\/A/);
+  assert.doesNotMatch(text, /a lengthy descriptive reason from the grader/, 'the PDF must not print the grader\'s descriptive citationMatchReason text');
 });
 
 test('generatePdfReports renders N/A (not the literal "NaN%") in the Score column when a per-question entry has no score field', async (t) => {
