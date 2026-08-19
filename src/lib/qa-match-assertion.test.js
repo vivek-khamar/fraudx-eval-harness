@@ -6,7 +6,7 @@ const promptfoo = require('promptfoo');
 const qaMatchAssertion = require('./qa-match-assertion');
 const {
   computeRiskStatusMatch, buildQuestionGradingPrompt, parseGraderVerdict,
-  jaccardSimilarity, matchExpectedToResolvedChunks,
+  jaccardSimilarity, greedyPairBySimilarity,
 } = require('./qa-match-assertion');
 
 test('computeRiskStatusMatch returns the fraction of matching risk determinations', () => {
@@ -319,49 +319,49 @@ test('jaccardSimilarity is 0, not 1, when either side is empty', () => {
   assert.equal(jaccardSimilarity('', 'something'), 0);
 });
 
-test('matchExpectedToResolvedChunks pairs by content similarity, not position — proving reordered citations still match', () => {
-  // Expected passages are about cats then dogs; this run's resolved chunks are in the OPPOSITE
-  // order (dogs then cats). Positional pairing would pair "cats" with the dogs chunk and vice
-  // versa; similarity-based pairing must still pair cats-with-cats and dogs-with-dogs.
-  const expectedChunkTexts = ['A passage about cats and kittens.', 'A passage about dogs and puppies.'];
-  const resolvedChunkTexts = ['Some text about dogs and puppies.', 'Some text about cats and kittens.'];
+test('greedyPairBySimilarity pairs by content similarity, not position — proving reordered items still match', () => {
+  // Primary items are about cats then dogs; candidates are in the OPPOSITE order (dogs then
+  // cats). Positional pairing would pair "cats" with the dogs candidate and vice versa;
+  // similarity-based pairing must still pair cats-with-cats and dogs-with-dogs.
+  const primaryTexts = ['A passage about cats and kittens.', 'A passage about dogs and puppies.'];
+  const candidateTexts = ['Some text about dogs and puppies.', 'Some text about cats and kittens.'];
 
-  const matches = matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts);
+  const matches = greedyPairBySimilarity(primaryTexts, candidateTexts);
 
   assert.equal(matches[0], 'Some text about cats and kittens.');
   assert.equal(matches[1], 'Some text about dogs and puppies.');
 });
 
-test('matchExpectedToResolvedChunks leaves an expected passage unpaired (undefined) when there are more expected passages than resolved chunks', () => {
-  const expectedChunkTexts = ['about cats', 'about dogs', 'about birds'];
-  const resolvedChunkTexts = ['some cats content', 'some dogs content'];
+test('greedyPairBySimilarity leaves a primary item unpaired (undefined) when there are more primary items than candidates', () => {
+  const primaryTexts = ['about cats', 'about dogs', 'about birds'];
+  const candidateTexts = ['some cats content', 'some dogs content'];
 
-  const matches = matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts);
+  const matches = greedyPairBySimilarity(primaryTexts, candidateTexts);
 
   assert.equal(matches[0], 'some cats content');
   assert.equal(matches[1], 'some dogs content');
   assert.equal(matches[2], undefined);
 });
 
-test('matchExpectedToResolvedChunks leaves extra resolved chunks unused when there are more of them than expected passages', () => {
-  const expectedChunkTexts = ['about cats'];
-  const resolvedChunkTexts = ['some cats content', 'some dogs content', 'some birds content'];
+test('greedyPairBySimilarity leaves extra candidates unused when there are more of them than primary items', () => {
+  const primaryTexts = ['about cats'];
+  const candidateTexts = ['some cats content', 'some dogs content', 'some birds content'];
 
-  const matches = matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts);
+  const matches = greedyPairBySimilarity(primaryTexts, candidateTexts);
 
   assert.equal(matches.length, 1);
   assert.equal(matches[0], 'some cats content');
 });
 
-test('matchExpectedToResolvedChunks never assigns the same resolved chunk to two different expected passages', () => {
-  // Both expected passages are more similar to the same single resolved chunk than to anything
-  // else — the assignment must still be one-to-one, so only one of them can claim it.
-  const expectedChunkTexts = ['apple banana cherry', 'apple banana date'];
-  const resolvedChunkTexts = ['apple banana cherry date'];
+test('greedyPairBySimilarity never assigns the same candidate to two different primary items', () => {
+  // Both primary items are more similar to the same single candidate than to anything else —
+  // the assignment must still be one-to-one, so only one of them can claim it.
+  const primaryTexts = ['apple banana cherry', 'apple banana date'];
+  const candidateTexts = ['apple banana cherry date'];
 
-  const matches = matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts);
+  const matches = greedyPairBySimilarity(primaryTexts, candidateTexts);
 
-  const claimedCount = matches.filter((m) => m === resolvedChunkTexts[0]).length;
+  const claimedCount = matches.filter((m) => m === candidateTexts[0]).length;
   assert.equal(claimedCount, 1);
 });
 
@@ -391,7 +391,7 @@ test('qaMatchAssertion computes citationMatch via chunk-text semantic match usin
   assert.equal(result.namedScores.citationMatch, 0.5); // 1 of 2 graded questions matched
 });
 
-test('qaMatchAssertion pairs each expected passage with its most similar resolved chunk, spending one call per pair, even when this run cites them in a different order than the baseline', async (t) => {
+test('qaMatchAssertion pairs each resolved citation with its most similar expected passage, spending one call per pair, even when this run cites them in a different order than the baseline', async (t) => {
   const prompts = [];
   mockLoadApiProvider(t, async (prompt) => {
     if (isChunkTextMatchPrompt(prompt)) {
@@ -423,11 +423,12 @@ test('qaMatchAssertion pairs each expected passage with its most similar resolve
 
   const result = await qaMatchAssertion(output, context);
 
-  assert.equal(prompts.length, 2, 'exactly one call per expected passage, no fallback search across every candidate');
-  assert.match(prompts[0], /billing dispute/);
-  assert.match(prompts[0], /Form C-8\.1B/);
-  assert.match(prompts[1], /IME report/);
-  assert.match(prompts[1], /Dr Smith/);
+  assert.equal(prompts.length, 2, 'exactly one call per resolved citation, no fallback search across every candidate');
+  // Resolved chunk-1 (IME) is this run's first-cited chunk, so it's processed first.
+  assert.match(prompts[0], /IME report/);
+  assert.match(prompts[0], /Dr Smith/);
+  assert.match(prompts[1], /billing dispute/);
+  assert.match(prompts[1], /Form C-8\.1B/);
   assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
 });
 
@@ -461,7 +462,7 @@ test('qaMatchAssertion reports citationMatches false when one pair does not matc
   assert.equal(result.perQuestionBreakdown[0].citationMatchReason, 'IME pair does not match');
 });
 
-test('qaMatchAssertion treats an expected passage with no unclaimed resolved chunk left as an automatic non-match, spending no grader call on it', async (t) => {
+test('qaMatchAssertion treats a resolved citation with no unclaimed expected passage left as an automatic non-match, spending no grader call on it', async (t) => {
   let chunkCallCount = 0;
   mockLoadApiProvider(t, async (prompt) => {
     if (isChunkTextMatchPrompt(prompt)) {
@@ -472,7 +473,39 @@ test('qaMatchAssertion treats an expected passage with no unclaimed resolved chu
   });
 
   const output = fakeOutputWithCitations();
-  // Only ONE citation in this run's answer, but TWO expected gold passages.
+  // TWO citations in this run's answer, but only ONE expected gold passage — this run cited
+  // more distinct chunks for this question than the baseline did.
+  output.report.questions[0].answer = [
+    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
+    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
+  ].join(' ');
+  output.chunkGroundingData.set('doc-1:chunk-1', 'Details about the billing dispute Form C-8.1B.');
+  output.chunkGroundingData.set('doc-1:chunk-2', 'Details about the IME report from Dr Smith.');
+
+  const context = fakeContextWithExpectedChunkText();
+  context.vars.expected.qa[0].expectedChunkText = ['A passage about the billing dispute and Form C-8.1B.'];
+  context.vars.expected.qa[1].expectedChunkText = undefined;
+
+  const result = await qaMatchAssertion(output, context);
+
+  assert.equal(chunkCallCount, 1, 'only one grader call, for the one resolved citation that claimed the sole expected passage');
+  assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
+  assert.match(result.perQuestionBreakdown[0].citationMatchReason, /No unclaimed expected passage available/);
+});
+
+test('qaMatchAssertion ignores any expected passage left unclaimed after every resolved citation is paired', async (t) => {
+  let chunkCallCount = 0;
+  mockLoadApiProvider(t, async (prompt) => {
+    if (isChunkTextMatchPrompt(prompt)) {
+      chunkCallCount += 1;
+      return { output: JSON.stringify({ matches: true, reason: 'pair matches' }) };
+    }
+    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
+  });
+
+  const output = fakeOutputWithCitations();
+  // Only ONE citation in this run's answer, but TWO expected gold passages — this run cited
+  // fewer distinct chunks for this question than the baseline did.
   output.report.questions[0].answer = 'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>';
   output.chunkGroundingData.set('doc-1:chunk-1', 'Details about the billing dispute Form C-8.1B.');
 
@@ -485,37 +518,7 @@ test('qaMatchAssertion treats an expected passage with no unclaimed resolved chu
 
   const result = await qaMatchAssertion(output, context);
 
-  assert.equal(chunkCallCount, 1, 'only one grader call, for the one expected passage that claimed the sole resolved chunk');
-  assert.equal(result.perQuestionBreakdown[0].citationMatches, false);
-  assert.match(result.perQuestionBreakdown[0].citationMatchReason, /No unclaimed resolved chunk available/);
-});
-
-test('qaMatchAssertion ignores any of this run\'s resolved citations left unclaimed after every expected passage is paired', async (t) => {
-  let chunkCallCount = 0;
-  mockLoadApiProvider(t, async (prompt) => {
-    if (isChunkTextMatchPrompt(prompt)) {
-      chunkCallCount += 1;
-      return { output: JSON.stringify({ matches: true, reason: 'pair matches' }) };
-    }
-    return { output: JSON.stringify({ matches: true, reason: 'answer ok' }) };
-  });
-
-  const output = fakeOutputWithCitations();
-  // TWO citations in this run's answer, but only ONE expected gold passage.
-  output.report.questions[0].answer = [
-    'see <InTextCitation fileName="a1.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>',
-    'and <InTextCitation fileName="a2.pdf" documentId="doc-1" chunkId="chunk-2"></InTextCitation>',
-  ].join(' ');
-  output.chunkGroundingData.set('doc-1:chunk-1', 'Details about the IME report from Dr Smith.');
-  output.chunkGroundingData.set('doc-1:chunk-2', 'Details about the billing dispute Form C-8.1B.');
-
-  const context = fakeContextWithExpectedChunkText();
-  context.vars.expected.qa[0].expectedChunkText = ['A passage about the billing dispute and Form C-8.1B.'];
-  context.vars.expected.qa[1].expectedChunkText = undefined;
-
-  const result = await qaMatchAssertion(output, context);
-
-  assert.equal(chunkCallCount, 1, 'only one expected passage exists, so only one grader call is made regardless of extra resolved citations');
+  assert.equal(chunkCallCount, 1, 'only one resolved citation exists, so only one grader call is made regardless of extra expected passages');
   assert.equal(result.perQuestionBreakdown[0].citationMatches, true);
 });
 

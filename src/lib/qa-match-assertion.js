@@ -63,10 +63,10 @@ function parseGraderVerdict(responseOutput) {
 
 const NO_CITATION_RESOLVED_REASON = 'No cited chunk resolved to compare against the expected passage.';
 
-// Fires when this run resolved at least one citation, but every one of them was already claimed
-// by a more-similar expected passage before this one's turn — distinct from
+// Fires when this run resolved at least one citation, but every expected (baseline) passage was
+// already claimed by a more-similar resolved chunk before this one's turn — distinct from
 // NO_CITATION_RESOLVED_REASON, which fires when NONE of the answer's citations resolved at all.
-const NO_MATCHING_CANDIDATE_REASON = 'No unclaimed resolved chunk available to pair with this expected passage.';
+const NO_MATCHING_CANDIDATE_REASON = 'No unclaimed expected passage available to pair with this cited chunk.';
 
 // Lowercased alphanumeric word tokens — punctuation and casing don't carry meaning for a cheap
 // overlap check, only the words themselves do.
@@ -95,63 +95,70 @@ function jaccardSimilarity(textA, textB) {
   return intersection / union;
 }
 
-// Pairs each expected passage with at most one resolved chunk — a one-to-one assignment chosen
-// by content similarity, not citation order, so a genuinely correct answer that cites the same
-// material in a different order than the baseline run did isn't penalized for reordering. Greedy,
-// not globally optimal: every possible (expected, resolved) pair is scored, then claimed
-// highest-similarity-first, skipping any pair where either side is already claimed. Returns an
-// array parallel to expectedChunkTexts — matches[i] is the resolved chunk text paired with
-// expectedChunkTexts[i], or undefined if no unclaimed candidate remained for it (more expected
-// passages than resolved chunks, or a low-similarity leftover after better matches claimed
-// everything usable).
-function matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts) {
-  const candidates = [];
-  for (let i = 0; i < expectedChunkTexts.length; i++) {
-    for (let j = 0; j < resolvedChunkTexts.length; j++) {
-      candidates.push({ i, j, score: jaccardSimilarity(expectedChunkTexts[i], resolvedChunkTexts[j]) });
+// Pairs each item in `primaryTexts` with at most one item in `candidateTexts` — a one-to-one
+// assignment chosen by content similarity, not order, so a genuinely correct answer that cites
+// the same material in a different order than the baseline run did isn't penalized for
+// reordering. Greedy, not globally optimal: every possible (primary, candidate) pair is scored,
+// then claimed highest-similarity-first, skipping any pair where either side is already claimed.
+// Returns an array parallel to primaryTexts — matches[i] is the candidateTexts entry paired with
+// primaryTexts[i], or undefined if no unclaimed candidate remained for it (more primary items
+// than candidates, or a low-similarity leftover after better matches claimed everything usable).
+// Which list is "primary" decides what an unmatched result means: computeChunkTextMatch passes
+// this run's resolved citations as primary and the baseline's expected passages as candidates, so
+// citationMatch asks "does every citation this run actually made hold up against the baseline
+// material," not "did this run recreate every citation the baseline made."
+function greedyPairBySimilarity(primaryTexts, candidateTexts) {
+  const candidatePairs = [];
+  for (let i = 0; i < primaryTexts.length; i++) {
+    for (let j = 0; j < candidateTexts.length; j++) {
+      candidatePairs.push({ i, j, score: jaccardSimilarity(primaryTexts[i], candidateTexts[j]) });
     }
   }
   // Highest similarity claimed first; Array.prototype.sort is stable, so tied scores (including
   // the common all-zero case when nothing shares any word) fall back to a deterministic order
   // rather than an arbitrary one.
-  candidates.sort((a, b) => b.score - a.score);
+  candidatePairs.sort((a, b) => b.score - a.score);
 
-  const claimedExpected = new Set();
-  const claimedResolved = new Set();
-  const matches = new Array(expectedChunkTexts.length).fill(undefined);
-  for (const { i, j } of candidates) {
-    if (claimedExpected.has(i) || claimedResolved.has(j)) {
+  const claimedPrimary = new Set();
+  const claimedCandidate = new Set();
+  const matches = new Array(primaryTexts.length).fill(undefined);
+  for (const { i, j } of candidatePairs) {
+    if (claimedPrimary.has(i) || claimedCandidate.has(j)) {
       continue;
     }
-    matches[i] = resolvedChunkTexts[j];
-    claimedExpected.add(i);
-    claimedResolved.add(j);
+    matches[i] = candidateTexts[j];
+    claimedPrimary.add(i);
+    claimedCandidate.add(j);
   }
   return matches;
 }
 
-// A single expectedChunkText entry reports its own reason verbatim (preserving the exact
-// single-passage behavior this generalizes). With multiple entries, the unmatched ones are the
-// actionable signal, so they're surfaced instead of the ones that already succeeded; only once
-// every entry has matched do the (now all-success) reasons get joined.
-function summarizeCitationReason(perExpectedResults) {
-  if (perExpectedResults.length === 1) {
-    return perExpectedResults[0].reason;
+// A single pairing reports its own reason verbatim (preserving the exact single-passage behavior
+// this generalizes). With multiple pairings, the unmatched ones are the actionable signal, so
+// they're surfaced instead of the ones that already succeeded; only once every pairing has
+// matched do the (now all-success) reasons get joined.
+function summarizeCitationReason(perPairingResults) {
+  if (perPairingResults.length === 1) {
+    return perPairingResults[0].reason;
   }
-  const unmatched = perExpectedResults.filter((r) => !r.matched);
-  const relevant = unmatched.length > 0 ? unmatched : perExpectedResults;
+  const unmatched = perPairingResults.filter((r) => !r.matched);
+  const relevant = unmatched.length > 0 ? unmatched : perPairingResults;
   return relevant.map((r) => r.reason).join(' | ');
 }
 
 // Resolves every citation in this one question's actual answer against chunkGroundingData, then
-// pairs each expected passage with its most content-similar resolved chunk (matchExpectedToResolvedChunks)
-// and spends ONE grader call per pair — no searching every candidate per entry, and no dependence
-// on citation order between the two runs. An expected passage left unpaired (more expected
-// passages than resolved chunks, or every plausible candidate already claimed by a closer match)
-// is an automatic non-match with no grader call spent on it. A citation that doesn't resolve at
-// all (missing grounding data entirely, or that specific chunk absent from it) is skipped when
-// building resolvedChunkTexts, not treated as a mismatch by itself. If NO citation resolves at
-// all, this returns false with a fixed reason and makes no grader call.
+// pairs each RESOLVED CHUNK (this run's own citations) with its most content-similar EXPECTED
+// PASSAGE (the baseline's), via greedyPairBySimilarity — one grader call per pair, no searching
+// every candidate per entry, and no dependence on citation order between the two runs. Passing
+// this run's citations as the primary side (rather than the baseline's) means citationMatch asks
+// "does every citation this run actually made hold up against the baseline material" — a resolved
+// chunk left unpaired (this run cited more distinct chunks than the baseline did for this
+// question, or every plausible candidate already claimed by a closer match) is an automatic
+// non-match with no grader call spent on it, rather than penalizing this run for citing *fewer*
+// things than the baseline. A citation that doesn't resolve at all (missing grounding data
+// entirely, or that specific chunk absent from it) is skipped when building resolvedChunkTexts,
+// not treated as a mismatch by itself. If NO citation resolves at all, this returns false with a
+// fixed reason and makes no grader call.
 async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer, chunkGroundingData) {
   const citations = extractCitedCitationsFromText(actualAnswer);
   const resolvedChunkTexts = [];
@@ -165,27 +172,27 @@ async function computeChunkTextMatch(provider, expectedChunkTexts, actualAnswer,
     return { citationMatches: false, citationMatchReason: NO_CITATION_RESOLVED_REASON };
   }
 
-  const matchedChunkTexts = matchExpectedToResolvedChunks(expectedChunkTexts, resolvedChunkTexts);
+  const matchedExpectedTexts = greedyPairBySimilarity(resolvedChunkTexts, expectedChunkTexts);
 
-  const perExpectedResults = [];
-  for (let i = 0; i < expectedChunkTexts.length; i++) {
-    const actualChunkText = matchedChunkTexts[i];
-    if (actualChunkText === undefined) {
-      perExpectedResults.push({ matched: false, reason: NO_MATCHING_CANDIDATE_REASON });
+  const perPairingResults = [];
+  for (let j = 0; j < resolvedChunkTexts.length; j++) {
+    const expectedText = matchedExpectedTexts[j];
+    if (expectedText === undefined) {
+      perPairingResults.push({ matched: false, reason: NO_MATCHING_CANDIDATE_REASON });
       continue;
     }
-    const prompt = buildChunkTextMatchPrompt(expectedChunkTexts[i], actualChunkText);
+    const prompt = buildChunkTextMatchPrompt(expectedText, resolvedChunkTexts[j]);
     const response = await provider.callApi(prompt);
     if (response.error) {
       throw new Error(response.error);
     }
     const { matches, reason } = parseGraderVerdict(response.output);
-    perExpectedResults.push({ matched: matches, reason });
+    perPairingResults.push({ matched: matches, reason });
   }
 
   return {
-    citationMatches: perExpectedResults.every((r) => r.matched),
-    citationMatchReason: summarizeCitationReason(perExpectedResults),
+    citationMatches: perPairingResults.every((r) => r.matched),
+    citationMatchReason: summarizeCitationReason(perPairingResults),
   };
 }
 
@@ -268,4 +275,4 @@ module.exports.buildQuestionGradingPrompt = buildQuestionGradingPrompt;
 module.exports.buildChunkTextMatchPrompt = buildChunkTextMatchPrompt;
 module.exports.parseGraderVerdict = parseGraderVerdict;
 module.exports.jaccardSimilarity = jaccardSimilarity;
-module.exports.matchExpectedToResolvedChunks = matchExpectedToResolvedChunks;
+module.exports.greedyPairBySimilarity = greedyPairBySimilarity;
