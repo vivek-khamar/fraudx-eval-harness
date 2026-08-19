@@ -858,6 +858,81 @@ test('generatePdfReports shows a numbered [n] marker in the Answer paragraph ins
   assert.match(text, /Sources: \[1\] report-a\.pdf/);
 });
 
+test('generatePdfReports embeds a real clickable PDF link on a Sources filename when its citation tag carries a url', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const qaMatchComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'qa_match'
+  );
+  const citationUrl = 'https://upload.groundx.ai/file/report-a.pdf';
+  qaMatchComponent.perQuestionBreakdown = [
+    {
+      predefinedQuestionId: 1,
+      question: 'LINKED-QUESTION',
+      actualAnswer: `Fraud detected <InTextCitation fileName="report-a.pdf" documentId="doc-1" chunkId="chunk-1" url="${citationUrl}"></InTextCitation> per the filing.`,
+      riskStatus: 'RISK_DETECTED',
+      riskStatusMatches: true,
+      matches: true,
+      score: 88,
+      reason: 'r',
+    },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  // pdf-parse only extracts text, never link annotations, so this reads the PDF's raw bytes
+  // directly (pdfkit does not compress link-annotation dictionaries) to confirm a real /URI
+  // link object was embedded, not just that the filename renders as underlined-looking text.
+  const rawPdf = fs.readFileSync(filePath).toString('latin1');
+  assert.ok(rawPdf.includes(citationUrl), 'expected the citation url to appear in a link annotation');
+  assert.ok(rawPdf.includes('/URI'), 'expected a /URI link annotation to be present');
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+  assert.match(text, /Sources: \[1\] report-a\.pdf/, 'the visible Sources text is unchanged by adding the link');
+});
+
+test('generatePdfReports does not embed any link annotation when no citation has a url', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const qaMatchComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'qa_match'
+  );
+  qaMatchComponent.perQuestionBreakdown = [
+    {
+      predefinedQuestionId: 1,
+      question: 'UNLINKED-QUESTION',
+      actualAnswer: 'Fraud detected <InTextCitation fileName="report-a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation> per the filing.',
+      riskStatus: 'RISK_DETECTED',
+      riskStatusMatches: true,
+      matches: true,
+      score: 88,
+      reason: 'r',
+    },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const rawPdf = fs.readFileSync(filePath).toString('latin1');
+  assert.ok(!rawPdf.includes('/URI'), 'no citation carried a url, so no /URI link annotation should exist');
+});
+
 test('generatePdfReports shows no Sources line when the answer has no citations', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));

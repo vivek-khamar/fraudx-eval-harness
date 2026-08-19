@@ -346,8 +346,20 @@ function renderClaimPdf(result, timestamp, filePath) {
     const { cleanedText, legend } = formatAnswerWithCitations(entry.actualAnswer);
     field('Answer: ', cleanedText);
     if (legend.length > 0) {
-      const sourcesText = `Sources: ${legend.map((l) => `[${l.number}] ${l.fileName}`).join('   ')}`;
-      doc.fontSize(9).fillColor('gray').text(sourcesText, { width: usableWidth });
+      // Built as chained continued-text segments (not one interpolated string) so each
+      // filename can carry its own real pdfkit link/underline — a citation without a url
+      // renders identically to plain text, since link/underline are per-segment options,
+      // not paragraph-wide state.
+      doc.fontSize(9).fillColor('gray');
+      doc.text('Sources: ', { continued: true });
+      legend.forEach((l, i) => {
+        const isLast = i === legend.length - 1;
+        doc.text(`[${l.number}] `, { continued: true });
+        doc.text(l.fileName, { continued: !isLast, underline: Boolean(l.url), link: l.url });
+        if (!isLast) {
+          doc.text('   ', { continued: true });
+        }
+      });
       doc.fillColor('black');
       doc.moveDown(0.35);
     }

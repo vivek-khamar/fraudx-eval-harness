@@ -56,11 +56,18 @@ test('extractCitedCitationsFromText skips a citation tag missing fileName, docum
   ]);
 });
 
-test('extractCitedCitationsFromText ignores every other tag attribute (url, fileType, sourceIndex, occurrenceIndex)', () => {
+test('extractCitedCitationsFromText ignores every other tag attribute except url (fileType, sourceIndex, occurrenceIndex)', () => {
   const text = '<InTextCitation url="https://x" chunkId="chunk-1" fileName="report.pdf" fileType="pdf" documentId="doc-1" sourceIndex="1" occurrenceIndex="1"></InTextCitation>';
   assert.deepEqual(extractCitedCitationsFromText(text), [
-    { fileName: 'report.pdf', documentId: 'doc-1', chunkId: 'chunk-1' },
+    { fileName: 'report.pdf', documentId: 'doc-1', chunkId: 'chunk-1', url: 'https://x' },
   ]);
+});
+
+test('extractCitedCitationsFromText omits the url key entirely (not url: undefined) when the tag has no url attribute', () => {
+  const text = '<InTextCitation fileName="report.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>';
+  const [citation] = extractCitedCitationsFromText(text);
+  assert.deepEqual(citation, { fileName: 'report.pdf', documentId: 'doc-1', chunkId: 'chunk-1' });
+  assert.equal('url' in citation, false);
 });
 
 test('extractCitedCitationsFromText is reusable across multiple calls without leaking regex state', () => {
@@ -121,6 +128,23 @@ test('formatAnswerWithCitations returns the input unchanged (and an empty legend
   assert.deepEqual(formatAnswerWithCitations(null), { cleanedText: null, legend: [] });
   assert.deepEqual(formatAnswerWithCitations(undefined), { cleanedText: undefined, legend: [] });
   assert.deepEqual(formatAnswerWithCitations(''), { cleanedText: '', legend: [] });
+});
+
+test('formatAnswerWithCitations includes url on a legend entry when the citation tag has one, so the PDF renderer can link the filename', () => {
+  const text = 'See <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1" url="https://upload.groundx.ai/file/a.pdf"></InTextCitation>.';
+
+  const { legend } = formatAnswerWithCitations(text);
+
+  assert.deepEqual(legend, [{ number: 1, fileName: 'a.pdf', url: 'https://upload.groundx.ai/file/a.pdf' }]);
+});
+
+test('formatAnswerWithCitations omits url from a legend entry (not url: undefined) when the citation tag has none', () => {
+  const text = 'See <InTextCitation fileName="a.pdf" documentId="doc-1" chunkId="chunk-1"></InTextCitation>.';
+
+  const { legend } = formatAnswerWithCitations(text);
+
+  assert.deepEqual(legend, [{ number: 1, fileName: 'a.pdf' }]);
+  assert.equal('url' in legend[0], false);
 });
 
 test('formatAnswerWithCitations is reusable across multiple calls without leaking regex state', () => {

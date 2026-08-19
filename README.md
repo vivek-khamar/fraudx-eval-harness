@@ -152,6 +152,9 @@ own report, not a hand-curated answer key.
   copy only — the stored `actualAnswer` in `results.json` keeps its raw tags, since
   `citationMatch` grading reads citations off the raw text), with a gray "Sources: [n] fileName
   ..." legend line beneath the answer when it cites anything, entirely absent when it doesn't.
+  Each filename in that legend is a real clickable PDF link to the citation's own `url` (the real
+  report's `<InTextCitation>` tags carry one) when the tag has one, and plain unlinked text when
+  it doesn't.
 
   After the question-by-question breakdown comes the claim-metadata match table
   (`fraudRiskScore` and the three entity fields, expected vs. actual — field names are
