@@ -255,20 +255,11 @@ background and reports the pass/fail summary and the generated PDF's path once i
   `SOURCE_BUCKET_ID`) — the real platform has shared, account-level ingestion
   limits (e.g. a cap on concurrently-ingesting files), so running claims
   concurrently risks them contending with each other for that same quota.
-- `npm run score` reads `results.json` and prints one dashboard object per test case — under
-  this bucket-driven design that's always exactly one entry, for the single `SOURCE_BUCKET_ID`
-  being validated:
-
-```json
-[
-  {
-    "bucketId": 32277,
-    "ingestionTime": 366.8,
-    "processingTime": 722.495,
-    "accuracy": 77
-  }
-]
-```
+- `npm run score` reads `results.json` and prints one dashboard object per test case — a JSON
+  array of `{ bucketId, ingestionTime, processingTime, accuracy }` entries, always exactly one
+  entry under this bucket-driven design, for the single `SOURCE_BUCKET_ID` being validated. This
+  console output is a quick sanity check, not the deliverable — the generated PDF (below) is
+  what you actually read.
 
 `bucketId` identifies the real, newly-created FraudX bucket this run produced (read from
 `output.report.bucketId`, i.e. only available once the report was actually fetched) — not the
