@@ -13,8 +13,18 @@ test('entitiesMatch is true for case/whitespace-only differences', () => {
   assert.equal(entitiesMatch('New York State Insurance Fund (NYSIF)', '  new york state insurance fund (nysif)  '), true);
 });
 
-test('entitiesMatch is false for genuinely different spelling, not just case/whitespace', () => {
-  assert.equal(entitiesMatch('One Team Restoration, Inc.', 'OneTeam Restoration, Inc.'), false);
+test('entitiesMatch is true when a compound word is split by a space on only one side (real FraudX extraction drift)', () => {
+  // Reverses a 2026-08-13 decision that explicitly rejected this as a mismatch. Seeing it recur
+  // in a real report (same defendant, "OneTeam" vs "One Team") on 2026-08-19 was reason enough to
+  // relax it: this is FraudX's own extraction being inconsistent about a single word boundary in
+  // the same entity's name, not a sign of a genuinely different/misidentified entity.
+  assert.equal(entitiesMatch('One Team Restoration, Inc.', 'OneTeam Restoration, Inc.'), true);
+  assert.equal(entitiesMatch('OneTeam Restoration, Inc.', 'One Team Restoration, Inc.'), true);
+});
+
+test('entitiesMatch is false for genuinely different spelling that whitespace-stripping does not paper over', () => {
+  assert.equal(entitiesMatch('One Team Restoration, Inc.', 'One Team Restorations, Inc.'), false);
+  assert.equal(entitiesMatch('One Team Restoration, Inc.', 'One Team Renovation, Inc.'), false);
 });
 
 test('entitiesMatch is true when only one side has a trailing parenthetical abbreviation', () => {

@@ -8,9 +8,18 @@ function stripTrailingAbbreviation(str) {
   return normalize(str).replace(/\s*\([^)]*\)\s*$/, '');
 }
 
+// Removes ALL whitespace (not just collapsing repeats), so a compound word split by a space on
+// only one side of the comparison ("OneTeam" vs "One Team") still matches. FraudX's own entity
+// extraction is inconsistent about exactly this kind of word-boundary spacing for the same
+// entity — this is display/extraction noise, not evidence of a different entity.
+function stripAllWhitespace(str) {
+  return (str || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
 function entitiesMatch(actual, expected) {
   return normalize(actual) === normalize(expected)
-    || stripTrailingAbbreviation(actual) === stripTrailingAbbreviation(expected);
+    || stripTrailingAbbreviation(actual) === stripTrailingAbbreviation(expected)
+    || stripAllWhitespace(actual) === stripAllWhitespace(expected);
 }
 
 function fraudRiskScoreMatches(actual, expected) {
@@ -50,4 +59,5 @@ function metadataMatchAssertion(output, context) {
 module.exports = metadataMatchAssertion;
 module.exports.normalize = normalize;
 module.exports.entitiesMatch = entitiesMatch;
+module.exports.stripAllWhitespace = stripAllWhitespace;
 module.exports.fraudRiskScoreMatches = fraudRiskScoreMatches;
