@@ -207,6 +207,25 @@ cp .env.example .env   # fill in FRAUDX_ENDPOINT_URI, ANTHROPIC_API_KEY, SOURCE_
 npm run eval
 ```
 
+### Running it from Claude Code
+
+`.claude/commands/run-eval.md` defines a `/run-eval` slash command that wraps the same
+`npm run eval` invocation for use inside a Claude Code session, so you can trigger a real run by
+just asking, e.g.:
+
+```
+/run-eval bucketId=31662 claimName=my-test-run ingestionModel=openai-gpt-5.1 processingModel=deepinfra-google/gemma-3-12b-it
+```
+
+Plain language works too (`/run-eval bucket 31662 claim name my-test-run`). `bucketId` is
+required; if `claimName` is omitted, Claude proposes one (the real platform won't let you reuse a
+name) and confirms it with you first. `ingestionModel`/`processingModel` fall back to
+`INGESTION_MODEL_NAME`/`PROCESSING_MODEL_NAME` in `.env` when omitted. Every other env var
+(`FRAUDX_ENDPOINT_URI`, `GRADER_PROVIDER`, AWS credentials, etc.) always comes from `.env` —
+the command never prompts for or overrides those. Since a real run commonly takes 30–90+
+minutes, Claude states back exactly what it's about to run before starting, then runs it in the
+background and reports the pass/fail summary and the generated PDF's path once it finishes.
+
 - Before anything else, `npm run eval`'s `preeval` hook runs `scripts/build-tests-vars.js`,
   which fails fast with a clear error if `FRAUDX_ENDPOINT_URI`, `SOURCE_BUCKET_ID`, or
   `CLAIM_NAME` is unset, or if the bucket named by `SOURCE_BUCKET_ID` has no completed report
@@ -243,10 +262,10 @@ npm run eval
 ```json
 [
   {
-    "bucketId": 31970,
-    "ingestionTime": 53,
-    "processingTime": 96,
-    "accuracy": 68
+    "bucketId": 32277,
+    "ingestionTime": 366.8,
+    "processingTime": 722.495,
+    "accuracy": 77
   }
 ]
 ```
