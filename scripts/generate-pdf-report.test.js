@@ -15,6 +15,7 @@ const {
   humanizeFieldName,
   sortByRiskStatus,
   uniqueFilePath,
+  formatScore,
   formatCitationMatch,
   formatRiskStatus,
   riskStatusColor,
@@ -218,6 +219,17 @@ test('formatCitationMatch renders NO with the grader\'s reason for a non-matchin
 test('formatCitationMatch renders N/A when citationMatches is undefined', () => {
   assert.equal(formatCitationMatch({ citationMatches: undefined }), 'N/A');
   assert.equal(formatCitationMatch({ citationMatches: null }), 'N/A');
+});
+
+test('formatScore renders a rounded percentage for a numeric score', () => {
+  assert.equal(formatScore(87), '87%');
+  assert.equal(formatScore(87.6), '88%');
+});
+
+test('formatScore renders N/A instead of "NaN%" when score is missing or non-numeric', () => {
+  assert.equal(formatScore(undefined), 'N/A');
+  assert.equal(formatScore(null), 'N/A');
+  assert.equal(formatScore('87'), 'N/A');
 });
 
 test('formatRiskStatus spaces out the enum\'s underscores for display', () => {
@@ -747,6 +759,38 @@ test('generatePdfReports renders Citation Match as YES, NO (with the grader\'s r
   assert.match(text, /MATCHED-QUESTION[\s\S]*?RISK DETECTED[\s\S]*?95%[\s\S]*?YES/);
   assert.match(text, /MISMATCHED-QUESTION[\s\S]*?UNSURE[\s\S]*?40%[\s\S]*?NO \(The cited passage is unrelated to the expected passage\.\)/);
   assert.match(text, /UNGRADED-QUESTION[\s\S]*?RISK NOT DETECTED[\s\S]*?75%[\s\S]*?N\/A/);
+});
+
+test('generatePdfReports renders N/A (not the literal "NaN%") in the Score column when a per-question entry has no score field', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  const fixture = sampleResultsFile();
+  const qaMatchComponent = fixture.results.results[0].gradingResult.componentResults.find(
+    (c) => c.assertion.metric === 'qa_match'
+  );
+  // No `score` field at all — the shape a pre-Task-3 results.json would have, or
+  // any grader verdict that legitimately omits the optional `score` field.
+  qaMatchComponent.perQuestionBreakdown = [
+    { predefinedQuestionId: 1, question: 'SCORELESS-QUESTION', actualAnswer: 'a', riskStatus: 'RISK_DETECTED', riskStatusMatches: true, matches: true, reason: 'r' },
+  ];
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  assert.match(text, /SCORELESS-QUESTION[\s\S]*?RISK DETECTED[\s\S]*?N\/A/);
+  assert.doesNotMatch(text, /NaN/);
 });
 
 test('generatePdfReports shows a numbered [n] marker in the Answer paragraph instead of a raw <InTextCitation> tag, with a Sources line below it', async (t) => {

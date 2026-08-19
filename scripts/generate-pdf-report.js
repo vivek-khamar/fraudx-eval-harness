@@ -53,6 +53,15 @@ function humanizeFieldName(camelCaseName) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+// Renders a per-question percentage score for display; 'N/A' when the grader
+// omitted `score` entirely (parseGraderVerdict treats it as optional) or when
+// regenerating a PDF from a results.json produced before this field existed.
+// Math.round(undefined) is NaN, which would otherwise render the literal text
+// "NaN%" in the PDF.
+function formatScore(score) {
+  return typeof score === 'number' ? `${Math.round(score)}%` : 'N/A';
+}
+
 function formatCitationMatch(entry) {
   if (entry.citationMatches == null) {
     return 'N/A';
@@ -325,7 +334,7 @@ function renderClaimPdf(result, timestamp, filePath) {
       doc,
       [
         formatRiskStatus(entry.riskStatus),
-        `${Math.round(entry.score)}%`,
+        formatScore(entry.score),
         entry.riskStatusMatches ? 'YES' : 'NO',
         formatCitationMatch(entry),
       ],
@@ -460,6 +469,7 @@ module.exports = {
   humanizeFieldName,
   sortByRiskStatus,
   uniqueFilePath,
+  formatScore,
   formatCitationMatch,
   formatRiskStatus,
   riskStatusColor,
