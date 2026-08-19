@@ -520,6 +520,31 @@ test('generatePdfReports renders a 5th Citation match stat card only when namedS
   assert.match(text, /50%/);
 });
 
+test('generatePdfReports renders no 5th Citation match stat card when namedScores.citationMatch is undefined', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  fs.writeFileSync(resultsPath, JSON.stringify(sampleResultsFile())); // namedScores.citationMatch not set
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  const [filePath] = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW);
+
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  let text;
+  try {
+    const result = await parser.getText();
+    text = result.text;
+  } finally {
+    await parser.destroy();
+  }
+
+  // Case-sensitive: the stat card's label is 'Citation match' (lowercase "match"),
+  // which cannot collide with the Q&A table's always-present 'Citation Match'
+  // (capital "M") column header.
+  assert.doesNotMatch(text, /Citation match/);
+});
+
 test('generatePdfReports writes a PDF whose text includes the bucketId, question text, entity names, and report_quality reasoning', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
