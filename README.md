@@ -163,7 +163,7 @@ own report, not a hand-curated answer key.
   status (Detected, then Unsure, then Not Detected) rather than by their original ID, so the
   highest-risk findings read first. A table header (`Risk Status | Score | Risk Match | Citation
   Match`) precedes the per-question blocks; each question's heading is followed by a single
-  colored row of those four short values (the question's actual risk status —
+  bordered, colored row of those four short values (the question's actual risk status —
   distinct from whether it matched — the new 0-100 grader score, whether risk status matched,
   and `citationMatchScore` as a `formatScore`-rendered percentage — the fraction of this
   question's citation pairings that matched, `N/A` when the question wasn't graded for citations).

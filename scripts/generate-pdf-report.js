@@ -117,20 +117,27 @@ function uniqueFilePath(filePath) {
   return candidate;
 }
 
+// Padding inside each cell's border box, between the box edge and the text — matches
+// drawStatCardRow's own internal padding for the same reason (text flush against a border
+// reads as cramped).
+const CELL_PADDING = 4;
+
 function drawTableRow(doc, columns, colWidths, { bold = false, colors } = {}) {
   doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
-  const heights = columns.map((text, i) => doc.heightOfString(String(text), { width: colWidths[i] }));
-  const rowHeight = Math.max(...heights) + 8;
+  const textWidths = colWidths.map((w) => w - CELL_PADDING * 2);
+  const heights = columns.map((text, i) => doc.heightOfString(String(text), { width: textWidths[i] }));
+  const rowHeight = Math.max(...heights) + CELL_PADDING * 2;
   if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
     doc.addPage();
   }
   const startY = doc.y;
   let x = doc.page.margins.left;
   columns.forEach((text, i) => {
+    doc.rect(x, startY, colWidths[i], rowHeight).stroke('#cccccc');
     if (colors && colors[i]) {
       doc.fillColor(colors[i]);
     }
-    doc.text(String(text), x, startY, { width: colWidths[i] });
+    doc.text(String(text), x + CELL_PADDING, startY + CELL_PADDING, { width: textWidths[i] });
     if (colors && colors[i]) {
       doc.fillColor('black');
     }
@@ -295,7 +302,7 @@ function renderClaimPdf(result, timestamp, filePath) {
   // are sized just above the widest real value each can hold (e.g. "RISK NOT DETECTED") so no
   // realistic value in any of them wraps, which is what keeps this row safe from the
   // pagination-tearing bug the flowing-paragraph layout below it exists to avoid.
-  const qWidths = [140, 70, 90, 70];
+  const qWidths = [140, 50, 80, 90];
   drawTableRow(doc, ['Risk Status', 'Score', 'Risk Match', 'Citation Match'], qWidths, { bold: true });
   doc.moveDown(0.5);
 
