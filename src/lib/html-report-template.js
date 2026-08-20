@@ -317,6 +317,94 @@ function renderSemanticByGoldCategoryChart(categories) {
   return s;
 }
 
+function formatSeconds(ms) {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function renderHeroHeader(claimData) {
+  const docsLine = `${claimData.docsComplete} / ${claimData.docsSubmitted}`;
+  const docsPct = claimData.docsSubmitted ? Math.round((claimData.docsComplete / claimData.docsSubmitted) * 100) : 0;
+  return `
+  <header class="hero">
+    <div class="hero-top">
+      <div class="brand">FraudX<small>CLAIM EVALUATION</small></div>
+      <div class="pillwrap">
+        <div class="pill match">OVERALL SCORE&nbsp;&middot;&nbsp;<b>${claimData.accuracy}%</b></div>
+      </div>
+    </div>
+    <div class="kicker">CLAIM EVAL REPORT</div>
+    <h1 class="title">${escapeHtml(claimData.claimantName)} &mdash; Fraud Risk Evaluation</h1>
+    <p class="subtitle">Automated fraud-risk evaluation of a single claim, scored against the gold rubric for risk direction, answer content, and citation accuracy.</p>
+    <div class="meta-row">
+      <div><div class="m-lab">BUCKET ID</div><div class="m-val"><code>${claimData.bucketId}</code></div></div>
+      <div><div class="m-lab">CLAIMANT</div><div class="m-val">${escapeHtml(claimData.claimantName)}</div></div>
+      <div><div class="m-lab">GENERATED</div><div class="m-val">${claimData.generatedAt}</div></div>
+      <div><div class="m-lab">DOCS INGESTED</div><div class="m-val">${docsLine} &middot; ${docsPct}%</div></div>
+    </div>
+  </header>`;
+}
+
+function renderKpiCards(claimData) {
+  const { namedScores } = claimData;
+  const citationPct = namedScores.citationMatch === undefined ? 'N/A' : `${Math.round(namedScores.citationMatch * 100)}%`;
+  const delta = ((claimData.fraudRiskScoreActual - claimData.fraudRiskScoreExpected) * 100).toFixed(2);
+  const toleranceLabel = claimData.fraudRiskScoreMatches
+    ? '<span style="color:var(--good-ink);font-weight:700">within &plusmn;10%</span>'
+    : '<span style="color:var(--critical);font-weight:700">outside &plusmn;10%</span>';
+  return `
+  <div class="cards c4" style="margin-top:20px">
+    <div class="card hl"><span class="tag">OVERALL SCORE</span><div class="big" style="color:#4d7a08">${Math.round(namedScores.riskStatusMatch * 100)}%</div><div class="lab"><b>Risk-status match</b></div></div>
+    <div class="card"><div class="big amber">${Math.round(namedScores.answerContentMatch * 100)}%</div><div class="lab">Answer-content match</div></div>
+    <div class="card"><div class="big red">${citationPct}</div><div class="lab">Citation match</div></div>
+    <div class="card"><div class="big blue">${(claimData.fraudRiskScoreActual * 100).toFixed(2)}%</div><div class="lab">Claim risk score <span style="color:var(--muted)">vs gold</span></div><div class="sub">gold ${(claimData.fraudRiskScoreExpected * 100).toFixed(2)}% &middot; ${delta} pts &middot; ${toleranceLabel}</div></div>
+  </div>`;
+}
+
+function renderIngestionSummary(claimData) {
+  const failedList = claimData.failedDocuments.length > 0
+    ? `<p class="cap"><b>Failed documents:</b> ${claimData.failedDocuments.map((d) => `${escapeHtml(d.fileName)}: ${escapeHtml(d.error)}`).join('; ')}</p>`
+    : '';
+  return `
+  <section>
+    <div class="sec-head"><span class="sec-num">1</span><h2>Ingestion Summary</h2></div>
+    <p class="sec-sub">The claim documents for Bucket <code>${claimData.bucketId}</code> were ingested ahead of evaluation.</p>
+    <div class="cards c4">
+      <div class="card"><div class="big">${claimData.docsSubmitted}</div><div class="lab">Docs submitted</div></div>
+      <div class="card"><div class="big green">${claimData.docsComplete}</div><div class="lab">Docs complete</div></div>
+      <div class="card"><div class="big ${claimData.docsFailed > 0 ? 'red' : ''}">${claimData.docsFailed}</div><div class="lab">Docs failed</div></div>
+      <div class="card"><div class="big">${formatSeconds(claimData.ingestionTimeMs)}</div><div class="lab">Ingestion time</div></div>
+    </div>
+    ${failedList}
+  </section>`;
+}
+
+function renderProcessingSummary(claimData) {
+  const totalWallMs = claimData.ingestionTimeMs + claimData.processingTimeMs;
+  return `
+  <section>
+    <div class="sec-head"><span class="sec-num">2</span><h2>Processing Summary</h2></div>
+    <p class="sec-sub">Time spent turning ingested documents into scored risk answers. Only total ingestion and claim-processing time are emitted; per-step timings are marked <code>N/A</code>.</p>
+    <div class="cards c3">
+      <div class="card"><div class="big">${formatSeconds(claimData.ingestionTimeMs)}</div><div class="lab">Ingestion time</div></div>
+      <div class="card"><div class="big blue">${formatSeconds(claimData.processingTimeMs)}</div><div class="lab">Claim processing time</div></div>
+      <div class="card"><div class="big">${formatSeconds(totalWallMs)}</div><div class="lab">Total wall-clock</div></div>
+    </div>
+    <div class="chart-card">
+      <h4>Per-step processing breakdown</h4>
+      <table>
+        <thead><tr><th>Processing step</th><th class="num">Time taken</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Entity / claim profile generation</td><td class="num">N/A</td><td>Not captured in source</td></tr>
+          <tr><td>Question answering</td><td class="num">N/A</td><td>Not captured in source</td></tr>
+          <tr><td>Citation extraction / matching</td><td class="num">N/A</td><td>Not captured in source</td></tr>
+          <tr><td>Summary / metadata generation</td><td class="num">N/A</td><td>Not captured in source</td></tr>
+          <tr class="tot"><td>Total claim processing</td><td class="num">${formatSeconds(claimData.processingTimeMs)}</td><td>Only total was emitted</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
 module.exports = {
   REPORT_CSS,
   escapeHtml,
@@ -329,4 +417,9 @@ module.exports = {
   renderRiskDistributionChart,
   renderSemanticHistogram,
   renderSemanticByGoldCategoryChart,
+  formatSeconds,
+  renderHeroHeader,
+  renderKpiCards,
+  renderIngestionSummary,
+  renderProcessingSummary,
 };

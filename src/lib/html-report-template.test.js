@@ -142,3 +142,77 @@ test('renderSemanticByGoldCategoryChart shows "— no questions —" for a categ
   // character (rendered text) — match the source form it actually outputs.
   assert.match(svg, /&mdash; no questions &mdash;/);
 });
+
+const {
+  formatSeconds, renderHeroHeader, renderKpiCards,
+  renderIngestionSummary, renderProcessingSummary,
+} = require('./html-report-template');
+
+function sampleClaimData(overrides = {}) {
+  return {
+    bucketId: 32277,
+    claimantName: 'Jose Briones',
+    generatedAt: '2026-08-20T12:07:23',
+    docsSubmitted: 5,
+    docsComplete: 5,
+    docsFailed: 0,
+    failedDocuments: [],
+    ingestionTimeMs: 366800,
+    processingTimeMs: 722500,
+    namedScores: { riskStatusMatch: 0.66, answerContentMatch: 0.57, citationMatch: 0.09, fraudRiskScoreMatch: 0, entityFieldsMatch: 0.67 },
+    accuracy: 66,
+    fraudRiskScoreExpected: 0.7524,
+    fraudRiskScoreActual: 0.7071,
+    fraudRiskScoreMatches: false,
+    ...overrides,
+  };
+}
+
+test('formatSeconds formats milliseconds as one-decimal seconds', () => {
+  assert.equal(formatSeconds(366800), '366.8s');
+});
+
+test('renderHeroHeader includes bucket id, claimant name, generated-at, docs ingested, and the overall score pill', () => {
+  const html = renderHeroHeader(sampleClaimData());
+  assert.match(html, /32277/);
+  assert.match(html, /Jose Briones/);
+  assert.match(html, /2026-08-20T12:07:23/);
+  assert.match(html, /5\s*\/\s*5/);
+  assert.match(html, /66%/);
+});
+
+test('renderKpiCards shows all four headline percentages and the risk-score-vs-gold delta', () => {
+  const html = renderKpiCards(sampleClaimData());
+  assert.match(html, /66%/);  // risk-status match
+  assert.match(html, /57%/);  // answer-content match
+  assert.match(html, /9%/);   // citation match
+  assert.match(html, /70\.71%/); // actual fraud risk score
+  assert.match(html, /75\.24%/); // gold fraud risk score
+  assert.match(html, /outside/i); // tolerance verdict text, since fraudRiskScoreMatches is false
+});
+
+test('renderKpiCards shows "N/A" for citation match when namedScores.citationMatch is undefined', () => {
+  const claimData = sampleClaimData({ namedScores: { riskStatusMatch: 0.66, answerContentMatch: 0.57, fraudRiskScoreMatch: 0, entityFieldsMatch: 0.67 } });
+  const html = renderKpiCards(claimData);
+  assert.match(html, /N\/A/);
+});
+
+test('renderIngestionSummary shows docs submitted/complete/failed and ingestion time', () => {
+  const html = renderIngestionSummary(sampleClaimData());
+  assert.match(html, />5<\/div>/); // docs submitted card value
+  assert.match(html, /366\.8s/);
+});
+
+test('renderIngestionSummary lists failed documents when present', () => {
+  const claimData = sampleClaimData({ docsComplete: 4, docsFailed: 1, failedDocuments: [{ fileName: 'a.pdf', error: 'timeout' }] });
+  const html = renderIngestionSummary(claimData);
+  assert.match(html, /a\.pdf/);
+  assert.match(html, /timeout/);
+});
+
+test('renderProcessingSummary shows a per-step breakdown table marked N/A (no per-step telemetry exists)', () => {
+  const html = renderProcessingSummary(sampleClaimData());
+  assert.match(html, /722\.5s/);
+  assert.match(html, /N\/A/);
+  assert.match(html, /Not captured in source/);
+});
