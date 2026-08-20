@@ -8,13 +8,13 @@ const { formatAnswerWithCitations } = require('./extract-cited-file-names');
 // (which already assume this HTML gets printed to PDF).
 const REPORT_CSS = `
   :root{
-    --navy:#1e2547; --navy-2:#252d54; --lime:#a3e635; --lime-2:#84cc16;
+    --navy:#1e2547; --lime:#a3e635; --lime-2:#84cc16;
     --page:#f4f5f7; --surface:#ffffff; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
     --grid:#e7e8ec; --border:rgba(11,11,11,0.10);
-    --blue:#2a78d6; --orange:#eb6834; --aqua:#1baf7a; --yellow:#eda100; --violet:#4a3aa7;
-    --good:#0ca30c; --good-ink:#0a7d0a; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
-    --detected:#d03b3b; --detected-bg:#fdecec; --notdet:#0ca30c; --notdet-bg:#e9f7e9;
-    --notsure:#8a7d3a; --notsure-bg:#fbf4dd;
+    --blue:#2a78d6; --aqua:#1baf7a; --violet:#4a3aa7;
+    --good:#0ca30c; --good-ink:#0a7d0a; --warning:#fab219; --critical:#d03b3b;
+    --detected-bg:#fdecec; --notdet-bg:#e9f7e9;
+    --notsure-bg:#fbf4dd;
     --radius:16px;
   }
   *{box-sizing:border-box}
@@ -50,8 +50,7 @@ const REPORT_CSS = `
   .kicker{font-size:11px;font-weight:700;letter-spacing:2px;color:#8b93bf;margin:20px 0 6px}
   h1.title{font-size:30px;font-weight:800;margin:0 0 8px;letter-spacing:-.5px}
   .subtitle{color:#c3c8e0;font-size:14px;margin:0;max-width:640px}
-  .subtitle b{color:#fff}
-  .meta-row{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 26px;margin-top:24px;
+  .meta-row{display:grid;grid-template-columns:repeat(4,1fr);gap:18px 26px;margin-top:24px;
     border-top:1px solid rgba(255,255,255,.13);padding-top:20px}
   .meta-row .m-lab{font-size:9.5px;font-weight:700;letter-spacing:1.5px;color:#7f88b5;margin-bottom:4px}
   .meta-row .m-val{font-size:14px;font-weight:600;color:#eef0f8}
@@ -445,7 +444,7 @@ function renderAccuracySummary(claimData) {
     <div class="chart-card">
       <h4>Semantic match vs the gold dataset &mdash; by expected category</h4>
       ${renderSemanticByGoldCategoryChart(goldCategories)}
-      <div class="legend"><span><span class="dot" style="background:var(--blue)"></span>Model avg semantic match</span><span><span class="dot" style="background:#d7d6d0"></span>Gold reference (100%)</span></div>
+      <div class="legend"><span><span class="dot" style="background:var(--blue)"></span>Model avg semantic match</span><span><span class="dot" style="background:var(--grid)"></span>Gold reference (100%)</span></div>
     </div>
   </section>`;
 }

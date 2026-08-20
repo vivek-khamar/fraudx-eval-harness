@@ -150,10 +150,10 @@ own report, not a hand-curated answer key.
   and the claim's fraud-risk score vs. gold), then explicitly numbered sections: **Ingestion
   Summary** and **Processing Summary** (stat cards for docs submitted/complete/failed and
   ingestion/processing time — a "Failed documents:" list appears only when
-  `output.failedDocuments` is non-empty), **Accuracy Summary** (narrative panels plus three inline
-  SVG charts — a risk-status match bar, a risk-distribution chart, and semantic-match histograms
-  by score bucket and by gold category, all rendered as vector `<svg>` markup, not raster images),
-  and **Final Verdict** (a narrative net-read, what-went-right/what-went-wrong panels, and a
+  `output.failedDocuments` is non-empty), **Accuracy Summary** (narrative panels plus one
+  CSS-flexbox risk-status match bar and three separate inline-SVG charts — risk-distribution,
+  semantic-match-by-score-bucket histogram, and semantic-match-by-gold-category chart), and
+  **Final Verdict** (a narrative net-read, what-went-right/what-went-wrong panels, and a
   reasoning paragraph). A **Detailed Results Table** (one row per question: risk match, semantic
   score, citation-match %) and a **Claim Metadata Match** table (`fraudRiskScore` and the three
   entity fields, expected vs. actual) follow, and finally a full Q&A appendix ("All Questions —
