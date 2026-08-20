@@ -108,10 +108,13 @@ test('renderRiskStatusMatchBar sizes the two flex segments to the matched/mismat
 test('renderRiskDistributionChart renders one grouped bar per risk category with correct counts', () => {
   const svg = renderRiskDistributionChart({ model: { det: 2, nd: 0, ns: 1 }, gold: { det: 1, nd: 0, ns: 2 } });
   assert.match(svg, /<svg/);
-  assert.match(svg, />2<\/text>/); // model det count
-  assert.match(svg, />1<\/text>/); // gold det count (also model ns count — both appear)
   assert.match(svg, /Risk Detected/);
   assert.match(svg, /Not Sure/);
+  // Count labels are drawn as bold value text right after each bar's <rect> —
+  // matching that adjacency (not just the bare digit, which axis gridlines
+  // also render) confirms the actual bar count, not a coincidental gridline.
+  assert.match(svg, /<rect[^>]*fill="var\(--blue\)"\/><text[^>]*>2<\/text>/); // model det count
+  assert.match(svg, /<rect[^>]*fill="var\(--muted\)"\/><text[^>]*>2<\/text>/); // gold ns count
 });
 
 test('renderSemanticHistogram renders a bar per bucket with the total count labeled', () => {
@@ -119,7 +122,11 @@ test('renderSemanticHistogram renders a bar per bucket with the total count labe
   const svg = renderSemanticHistogram(buckets);
   assert.match(svg, /<svg/);
   assert.match(svg, /81-100/);
-  assert.match(svg, />2<\/text>/);
+  // The bucket-total label is the only text drawn bold (font-weight="800") —
+  // axis gridline labels are font-size="9" fill="var(--muted)" with no
+  // font-weight, so matching on the bold attribute (not just the bare digit)
+  // confirms the actual bucket total, not a coincidental gridline value.
+  assert.match(svg, /font-weight="800"[^>]*>2<\/text>/);
 });
 
 test('renderSemanticByGoldCategoryChart shows "— no questions —" for a category with zero count', () => {

@@ -304,7 +304,7 @@ function renderSemanticByGoldCategoryChart(categories) {
     const y = pad.t + bh * i + 10, h = bh - 30;
     s += `<text x="${pad.l - 10}" y="${y + h / 2 - 2}" font-size="11" font-weight="600" fill="var(--ink-2)" text-anchor="end">${escapeHtml(label)}</text>`;
     s += `<text x="${pad.l - 10}" y="${y + h / 2 + 12}" font-size="9" fill="var(--muted)" text-anchor="end">${count} question${count === 1 ? '' : 's'}</text>`;
-    s += `<rect x="${pad.l}" y="${y}" width="${iw}" height="${h}" rx="5" fill="#e9e8e2"/>`;
+    s += `<rect x="${pad.l}" y="${y}" width="${iw}" height="${h}" rx="5" fill="var(--grid)"/>`;
     const w = iw * (avgScore / 100);
     if (count > 0) {
       s += `<rect x="${pad.l}" y="${y}" width="${w}" height="${h}" rx="5" fill="var(--blue)"/>`;
