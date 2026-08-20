@@ -3,8 +3,10 @@
 These are conventions established in practice, not enforced by tooling — read them before
 assuming a different default.
 
-- **Work directly on `master`. No branch/PR flow.** Commit directly to `master` and push when
-  asked; don't create a feature branch or open a PR unless explicitly requested.
+- **Use a branch + PR for every change. Never commit directly to `master`.** Create a
+  descriptively named feature branch (e.g. `fix/citation-url-encoding`,
+  `feat/pdf-table-borders`), commit there, push the branch, and open a PR for review —
+  even for small fixes. Do not push to `master` directly.
 - **Design before building.** For any non-trivial change, write a design spec to
   `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and an implementation plan to
   `docs/superpowers/plans/YYYY-MM-DD-<topic>.md` before writing code — see existing files there
