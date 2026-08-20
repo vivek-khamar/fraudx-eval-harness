@@ -330,9 +330,13 @@ Dispatching it prompts for a `mode`:
 - **`full-eval`** (default) — runs `npm test` first (the `unit-tests` job), and only if that passes, runs
   the real `npm run eval` against `FRAUDX_ENDPOINT_URI` (the `full-eval` job, gated with
   `needs: unit-tests`) — so a broken build fails in seconds instead of burning 30-60+ minutes of
-  real eval time. Generated PDF reports (`reports/**`) are uploaded as a workflow artifact, even
-  if the eval run itself "fails" (an assertion not meeting its pass bar is a real finding, not a
-  CI misconfiguration). Only one `full-eval` run can be in flight at a time
+  real eval time. Generated PDF reports (`reports/**`) are uploaded as a workflow artifact named
+  `reports` (`actions/upload-artifact@v4`), even if the eval run itself "fails" (an assertion not
+  meeting its pass bar is a real finding, not a CI misconfiguration) — the runner itself is
+  ephemeral, so the PDF only survives past the job by being uploaded this way. Download it from
+  the completed run's page on GitHub, under **Artifacts** at the bottom — not from any path on
+  disk. GitHub's default retention applies (90 days unless the repo overrides it); this workflow
+  doesn't set a custom `retention-days`. Only one `full-eval` run can be in flight at a time
   (`concurrency: fraudx-full-eval`) — the real platform has shared, account-level ingestion
   limits, so overlapping real evals would contend with each other.
 
