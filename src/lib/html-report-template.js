@@ -405,6 +405,68 @@ function renderProcessingSummary(claimData) {
   </section>`;
 }
 
+function renderBulletList(items) {
+  return `<ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+}
+
+function renderAccuracySummary(claimData) {
+  const { perQuestionBreakdown, narrative } = claimData;
+  const { matched, mismatched } = computeRiskStatusMatchCounts(perQuestionBreakdown);
+  const distribution = computeRiskDistribution(perQuestionBreakdown);
+  const buckets = computeSemanticBuckets(perQuestionBreakdown);
+  const goldCategories = computeSemanticByGoldCategory(perQuestionBreakdown);
+
+  return `
+  <section>
+    <div class="sec-head"><span class="sec-num">3</span><h2>Accuracy Summary</h2></div>
+    <p class="sec-sub">How well the engine's answers matched the gold rubric.</p>
+    <div class="grid2">
+      <div class="panel"><h4><span class="dot" style="background:var(--aqua)"></span>Summary</h4>${renderBulletList(narrative.summaryPanel)}</div>
+      <div class="panel"><h4><span class="dot" style="background:var(--blue)"></span>Questions</h4>${renderBulletList(narrative.questionsPanel)}</div>
+      <div class="panel"><h4><span class="dot" style="background:var(--critical)"></span>Citations</h4>${renderBulletList(narrative.citationsPanel)}</div>
+      <div class="panel"><h4><span class="dot" style="background:var(--violet)"></span>Overall</h4>${renderBulletList(narrative.overallPanel)}</div>
+    </div>
+    ${renderRiskStatusMatchBar(matched, mismatched)}
+    <div class="grid2">
+      <div class="chart-card" style="margin-top:0">
+        <h4>Risk distribution &mdash; model vs gold</h4>
+        ${renderRiskDistributionChart(distribution)}
+        <div class="legend"><span><span class="dot" style="background:var(--blue)"></span>Model output</span><span><span class="dot" style="background:var(--muted)"></span>Gold expected</span></div>
+      </div>
+      <div class="chart-card" style="margin-top:0">
+        <h4>Semantic match vs gold &mdash; score distribution</h4>
+        ${renderSemanticHistogram(buckets)}
+        <div class="legend"><span><span class="dot" style="background:var(--good)"></span>Matched gold direction</span><span><span class="dot" style="background:var(--critical)"></span>Missed gold direction</span></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h4>Semantic match vs the gold dataset &mdash; by expected category</h4>
+      ${renderSemanticByGoldCategoryChart(goldCategories)}
+      <div class="legend"><span><span class="dot" style="background:var(--blue)"></span>Model avg semantic match</span><span><span class="dot" style="background:#d7d6d0"></span>Gold reference (100%)</span></div>
+    </div>
+  </section>`;
+}
+
+function renderFinalVerdict(claimData) {
+  const { finalVerdict } = claimData.narrative;
+  return `
+  <section>
+    <div class="sec-head"><span class="sec-num">4</span><h2>Final Verdict</h2></div>
+    <div class="callout verdict">
+      <h4>Net read</h4>
+      ${renderBulletList(finalVerdict.netRead)}
+    </div>
+    <div class="grid2">
+      <div class="panel"><h4 style="color:var(--good-ink)">What went right</h4>${renderBulletList(finalVerdict.whatWentRight)}</div>
+      <div class="panel"><h4 style="color:#a01d1d">What went wrong</h4>${renderBulletList(finalVerdict.whatWentWrong)}</div>
+    </div>
+    <div class="callout info">
+      <h4>Reasoning</h4>
+      ${escapeHtml(finalVerdict.reasoning)}
+    </div>
+  </section>`;
+}
+
 module.exports = {
   REPORT_CSS,
   escapeHtml,
@@ -422,4 +484,6 @@ module.exports = {
   renderKpiCards,
   renderIngestionSummary,
   renderProcessingSummary,
+  renderAccuracySummary,
+  renderFinalVerdict,
 };

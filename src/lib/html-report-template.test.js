@@ -216,3 +216,48 @@ test('renderProcessingSummary shows a per-step breakdown table marked N/A (no pe
   assert.match(html, /N\/A/);
   assert.match(html, /Not captured in source/);
 });
+
+const { renderAccuracySummary, renderFinalVerdict } = require('./html-report-template');
+
+function sampleNarrative() {
+  return {
+    summaryPanel: ['Substantially matches gold on key facts.'],
+    questionsPanel: ['Risk-direction match: 2 / 3.'],
+    citationsPanel: ['Citation match sits at 9%.'],
+    overallPanel: ['Overall score 66%.'],
+    finalVerdict: {
+      netRead: ['Well-grounded and reliable at surfacing clear risks.'],
+      whatWentRight: ['No hallucinated facts.'],
+      whatWentWrong: ['Under-called 9 risks.'],
+      reasoning: 'The error pattern is a conservative-bias failure mode.',
+    },
+  };
+}
+
+function sampleAccuracyClaimData() {
+  return {
+    perQuestionBreakdown: [
+      { riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: true, score: 90 },
+      { riskStatus: 'UNSURE', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: false, score: 10 },
+    ],
+    narrative: sampleNarrative(),
+  };
+}
+
+test('renderAccuracySummary includes the 4 high-level panels and all 4 charts', () => {
+  const html = renderAccuracySummary(sampleAccuracyClaimData());
+  assert.match(html, /Substantially matches gold on key facts\./);
+  assert.match(html, /Risk-direction match: 2 \/ 3\./);
+  assert.match(html, /Citation match sits at 9%\./);
+  assert.match(html, /Overall score 66%\./);
+  assert.match(html, /<svg/); // at least one chart present
+  assert.match(html, /Risk-status match/);
+});
+
+test('renderFinalVerdict includes net read, what-went-right/wrong, and the reasoning callout', () => {
+  const html = renderFinalVerdict(sampleAccuracyClaimData());
+  assert.match(html, /Well-grounded and reliable at surfacing clear risks\./);
+  assert.match(html, /No hallucinated facts\./);
+  assert.match(html, /Under-called 9 risks\./);
+  assert.match(html, /The error pattern is a conservative-bias failure mode\./);
+});
