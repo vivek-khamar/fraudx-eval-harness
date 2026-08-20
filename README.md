@@ -144,49 +144,44 @@ own report, not a hand-curated answer key.
   overwriting them. On the rare case of two runs landing in the same second, a numeric suffix
   (`-2`, `-3`, ...) is appended as a fallback.
 
-  The PDF opens with a centered "Claim Eval Report" title and just the identity/provenance
-  fields that belong to neither section below (bucket ID and "Generated at" — the same IST
-  timestamp used in the filename, shown with no timezone label), then two explicitly headed
-  sections:
+  The report is built as an HTML document (`src/lib/html-report-template.js`'s
+  `renderReportHtml`) — a navy/lime design with a hero header (bucket ID, claimant, generated-at,
+  docs-ingested), a row of KPI cards (risk-status match, answer-content match, citation match,
+  and the claim's fraud-risk score vs. gold), then explicitly numbered sections: **Ingestion
+  Summary** and **Processing Summary** (stat cards for docs submitted/complete/failed and
+  ingestion/processing time — a "Failed documents:" list appears only when
+  `output.failedDocuments` is non-empty), **Accuracy Summary** (narrative panels plus three inline
+  SVG charts — a risk-status match bar, a risk-distribution chart, and semantic-match histograms
+  by score bucket and by gold category, all rendered as vector `<svg>` markup, not raster images),
+  and **Final Verdict** (a narrative net-read, what-went-right/what-went-wrong panels, and a
+  reasoning paragraph). A **Detailed Results Table** (one row per question: risk match, semantic
+  score, citation-match %) and a **Claim Metadata Match** table (`fraudRiskScore` and the three
+  entity fields, expected vs. actual) follow, and finally a full Q&A appendix ("All Questions —
+  Answers & Evaluation") with one card per question — its own risk-status chip, a highlighted
+  one-line verdict, the full answer text (raw `<InTextCitation>` tags replaced with small numbered
+  `[n]` markers via `src/lib/extract-cited-file-names.js`'s `formatAnswerWithCitations` — a
+  display copy only, since the stored `actualAnswer` in `results.json` keeps its raw tags for
+  `citationMatch` grading), the evaluator's reasoning, and a "Sources:" legend whose filenames are
+  real clickable links to the citation's own `url` when the `<InTextCitation>` tag carries one.
+  Questions in both the results table and the appendix are ordered by risk status (Detected, then
+  Unsure, then Not Detected) rather than by original ID, so the highest-risk findings read first.
 
-  - **Document Ingestion** — a compact stat-card row (docs submitted, docs complete, docs
-    failed, ingestion time), using only counts the pipeline actually has (no GPU/pod/quota/
-    concurrency telemetry). A "Failed documents:" list (one `fileName: error` line per entry)
-    follows only when `output.failedDocuments` is non-empty — a clean run's report grows no
-    section for something that didn't happen.
-  - **Claim Processing** — its own stat-card row (accuracy, processing time, risk status match
-    %, answer content match %, plus a 5th citation-match % card only when
-    `namedScores.citationMatch` is defined), then the question-by-question breakdown, the
-    claim-metadata match table, and the overall summary.
+  This HTML is never written to disk — `generatePdfReports` hands the rendered markup straight to
+  a headless Chromium instance (`puppeteer`, replacing the old `pdfkit` dependency; Puppeteer
+  downloads its own bundled Chromium on `npm install`) via `page.setContent()` and prints it to
+  PDF with `page.pdf()`; only the final PDF file ever lands on disk.
 
-  Within Claim Processing, questions are numbered sequentially (Q1, Q2, ...) and ordered by risk
-  status (Detected, then Unsure, then Not Detected) rather than by their original ID, so the
-  highest-risk findings read first. A table header (`Risk Status | Score | Risk Match | Citation
-  Match`) precedes the per-question blocks; each question's heading is followed by a single
-  bordered, colored row of those four short values (the question's actual risk status —
-  distinct from whether it matched — the new 0-100 grader score, whether risk status matched,
-  and `citationMatchScore` as a `formatScore`-rendered percentage — the fraction of this
-  question's citation pairings that matched, `N/A` when the question wasn't graded for citations).
-  The grader's own descriptive `citationMatchReason` text is computed and stored in
-  `results.json`'s `perQuestionBreakdown` exactly as before — it's just no longer printed in the
-  PDF, since it could run to several paragraphs per question; read it directly from
-  `results.json` for the full explanation behind any citation-match percentage. Then the Answer
-  and Reason render as full-width flowing
-  paragraphs below the row so a single question's content stays together in reading order even
-  across a page break. The "RISK ...:" prefix the real report embeds at the start of each answer
-  is left in place. Raw `<InTextCitation>` tags in the Answer are replaced with small numbered
-  `[n]` markers (`src/lib/extract-cited-file-names.js`'s `formatAnswerWithCitations`, a display
-  copy only — the stored `actualAnswer` in `results.json` keeps its raw tags, since
-  `citationMatch` grading reads citations off the raw text), with a gray "Sources: [n] fileName
-  ..." legend line beneath the answer when it cites anything, entirely absent when it doesn't.
-  Each filename in that legend is a real clickable PDF link to the citation's own `url` (the real
-  report's `<InTextCitation>` tags carry one) when the tag has one, and plain unlinked text when
-  it doesn't.
+  The **Final Verdict** narrative and each question's one-line verdict in the Q&A appendix come
+  from one additional LLM call per claim (`src/lib/narrative-analysis.js`'s
+  `generateNarrativeAnalysis`), reusing the same `GRADER_PROVIDER` env var as the existing grading
+  assertions — it's handed the already-computed scores and per-question breakdown and asked only
+  to interpret them, never to recompute any number. If that call fails or returns something that
+  doesn't parse into the expected shape, `generatePdfReports` catches the error, logs it, and
+  falls back to a fixed "Narrative analysis unavailable for this run." placeholder in every
+  narrative slot — a broken or unconfigured grader degrades the report gracefully instead of
+  failing PDF generation altogether.
 
-  After the question-by-question breakdown comes the claim-metadata match table
-  (`fraudRiskScore` and the three entity fields, expected vs. actual — field names are
-  humanized for display, e.g. `fraudRiskScore` reads as "Fraud Risk Score") and an overall
-  summary. A claim that gets skipped (no `bucketId`, or missing the data the PDF needs, including
+  A claim that gets skipped (no `bucketId`, or missing the data the PDF needs, including
   ingestion's `docsSubmitted`/`docsComplete` counts) is logged via `console.error` with its
   `bucketId` and a reason, and `main()` prints a final `Wrote N report(s).` summary line, so a
   run that produces zero PDFs is never silent.
