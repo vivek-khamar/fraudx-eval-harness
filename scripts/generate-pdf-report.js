@@ -1,5 +1,7 @@
 'use strict';
 
+require('dotenv').config();
+
 const fs = require('node:fs');
 const path = require('node:path');
 const promptfoo = require('promptfoo');
@@ -69,6 +71,8 @@ function isClaimRenderable(result) {
     typeof output.ingestion.docsSubmitted === 'number' &&
     typeof output.ingestion.docsComplete === 'number' &&
     output.processing && result.vars?.expected &&
+    typeof result.vars.expected.fraudRiskScore === 'number' &&
+    typeof output.report?.fraudRiskScore === 'number' &&
     hasRequiredNamedScores(result.gradingResult?.namedScores)
   );
 }

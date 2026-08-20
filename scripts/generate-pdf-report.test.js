@@ -114,6 +114,7 @@ async function extractPdfText(filePath) {
 
 test('generatePdfReports writes a real PDF containing the bucket id, a question, and the accuracy percentage', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-report-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const resultsPath = writeResultsFile(dir, sampleResultsFile());
   const reportsDir = path.join(dir, 'reports');
 
@@ -130,6 +131,7 @@ test('generatePdfReports writes a real PDF containing the bucket id, a question,
 
 test('generatePdfReports still writes a valid PDF when the narrative provider fails (fallback path)', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-report-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const resultsPath = writeResultsFile(dir, sampleResultsFile());
   const reportsDir = path.join(dir, 'reports');
   const failingProvider = { callApi: async () => ({ error: 'rate limited' }) };
@@ -142,15 +144,98 @@ test('generatePdfReports still writes a valid PDF when the narrative provider fa
   assert.match(text, /narrative analysis unavailable/i);
 });
 
-test('formatTimestampForFilename, formatLocalTimestamp, sortByRiskStatus, uniqueFilePath are unchanged', () => {
+test('generatePdfReports skips a claim with a missing/non-numeric fraudRiskScore instead of throwing, and still renders a healthy claim in the same file', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-report-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const fixture = sampleResultsFile();
+  const malformedClaim = sampleResultsFile().results.results[0];
+  malformedClaim.response.output.report.bucketId = 55555;
+  delete malformedClaim.vars.expected.fraudRiskScore; // buildClaimData would otherwise crash on .toFixed(4)
+  // Put the malformed claim first so a naive implementation that throws while
+  // building it would abort before ever reaching the healthy claim below.
+  fixture.results.results.unshift(malformedClaim);
+  const resultsPath = writeResultsFile(dir, fixture);
+  const reportsDir = path.join(dir, 'reports');
+
+  const originalConsoleError = console.error;
+  const errorCalls = [];
+  console.error = (...args) => {
+    errorCalls.push(args.join(' '));
+  };
+  t.after(() => {
+    console.error = originalConsoleError;
+  });
+
+  const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW, mockProvider(VALID_NARRATIVE));
+
+  assert.equal(written.length, 1);
+  assert.match(written[0], /32277/);
+  assert.ok(fs.existsSync(written[0]));
+  assert.ok(!fs.existsSync(path.join(reportsDir, '55555')));
+  assert.ok(
+    errorCalls.some((message) => message.includes('55555')),
+    `expected a console.error call mentioning bucketId 55555, got: ${JSON.stringify(errorCalls)}`,
+  );
+});
+
+test('running generate-pdf-report.js as a CLI exits non-zero when a claim in results.json errored', (t) => {
+  const { execFileSync } = require('node:child_process');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-cli-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const resultsPath = path.join(tmpDir, 'results.json');
+  // A claim that errored before any report existed at all (no bucketId, no response) —
+  // generatePdfReports skips it (nothing to render), but score-dashboard.js's
+  // dashboardHasErrors must still flag it, which is what main() uses to decide the
+  // process's exit code.
+  const fixture = {
+    results: {
+      timestamp: '2026-08-20T06:15:24.000Z',
+      results: [{ error: 'Creating a claim failed: 404 INGESTION model is not found.' }],
+    },
+  };
+  fs.writeFileSync(resultsPath, JSON.stringify(fixture));
+  const reportsDir = path.join(tmpDir, 'reports');
+
+  let status = 0;
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, 'generate-pdf-report.js'), resultsPath, reportsDir], { stdio: 'pipe' });
+  } catch (err) {
+    status = err.status;
+  }
+
+  assert.equal(status, 1);
+});
+
+test('formatTimestampForFilename, formatLocalTimestamp, sortByRiskStatus, uniqueFilePath are unchanged', (t) => {
   assert.equal(formatTimestampForFilename('2026-08-20T12:07:23.000Z'), '2026-08-20T12-07-23');
-  assert.equal(typeof formatLocalTimestamp(FIXED_NOW()), 'string');
+  // formatLocalTimestamp exists specifically to render IST (UTC+5:30) regardless of the
+  // host's own timezone, so a vacuous typeof-string check would pass even if it silently
+  // regressed to UTC or the host's local time. Assert the exact IST value.
+  assert.equal(formatLocalTimestamp(FIXED_NOW()), '2026-08-20T17:37:23');
   assert.deepEqual(
     sortByRiskStatus([{ riskStatus: 'UNSURE' }, { riskStatus: 'RISK_DETECTED' }]).map((e) => e.riskStatus),
     ['RISK_DETECTED', 'UNSURE'],
   );
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'unique-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const p1 = path.join(dir, 'x.pdf');
   fs.writeFileSync(p1, 'x');
   assert.equal(uniqueFilePath(p1), path.join(dir, 'x-2.pdf'));
+});
+
+test('formatLocalTimestamp renders the same IST value regardless of the process\'s own timezone', (t) => {
+  const originalTz = process.env.TZ;
+  t.after(() => {
+    process.env.TZ = originalTz;
+  });
+
+  const instant = new Date('2026-08-20T12:07:23.000Z');
+
+  process.env.TZ = 'UTC';
+  assert.equal(formatLocalTimestamp(instant), '2026-08-20T17:37:23');
+
+  process.env.TZ = 'America/New_York';
+  assert.equal(formatLocalTimestamp(instant), '2026-08-20T17:37:23');
 });
