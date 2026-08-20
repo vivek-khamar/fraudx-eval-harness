@@ -91,6 +91,35 @@ test('computeSemanticByGoldCategory averages score per expected gold category, a
   ]);
 });
 
+test('computeSemanticByGoldCategory excludes ungraded (non-numeric score) questions from the average and count', () => {
+  const breakdown = [
+    makeQuestion({ riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: true, score: 40 }),
+    makeQuestion({ riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: true, score: 60 }),
+    // Ungraded question: score is undefined (legitimate per parseGraderVerdict), must not pollute the average.
+    makeQuestion({ riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: false, score: undefined }),
+  ];
+  const categories = computeSemanticByGoldCategory(breakdown);
+  const detCategory = categories.find((c) => c.label === 'Gold: Risk Detected');
+  assert.equal(Number.isNaN(detCategory.avgScore), false);
+  assert.equal(detCategory.avgScore, 50);
+  assert.equal(detCategory.count, 2);
+});
+
+test('computeSemanticBuckets excludes ungraded (non-numeric score) questions entirely, not a 6th bucket', () => {
+  const breakdown = [
+    makeQuestion({ riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: true, score: 92 }),
+    makeQuestion({ riskStatus: 'UNSURE', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: false, score: 5 }),
+    // Ungraded question: must not fall into any bucket (previously silently landed in "81-100").
+    makeQuestion({ riskStatus: 'UNSURE', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: false, score: undefined }),
+  ];
+  const buckets = computeSemanticBuckets(breakdown);
+  const gradedCount = breakdown.length - 1;
+  const totalBucketed = buckets.total.reduce((s, x) => s + x, 0);
+  assert.equal(totalBucketed, gradedCount);
+  assert.deepEqual(buckets.matched, [0, 0, 0, 0, 1]);
+  assert.deepEqual(buckets.mismatched, [1, 0, 0, 0, 0]);
+});
+
 const {
   renderRiskStatusMatchBar, renderRiskDistributionChart,
   renderSemanticHistogram, renderSemanticByGoldCategoryChart,

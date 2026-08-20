@@ -190,6 +190,7 @@ function computeSemanticBuckets(perQuestionBreakdown) {
   const matched = [0, 0, 0, 0, 0];
   const mismatched = [0, 0, 0, 0, 0];
   for (const entry of perQuestionBreakdown) {
+    if (typeof entry.score !== 'number') continue;
     const i = semanticBucketIndex(entry.score);
     if (entry.riskStatusMatches) matched[i] += 1;
     else mismatched[i] += 1;
@@ -208,7 +209,7 @@ function computeSemanticByGoldCategory(perQuestionBreakdown) {
   const scoresByCode = { det: [], ns: [], nd: [] };
   for (const entry of perQuestionBreakdown) {
     const code = RISK_CODE[entry.expectedRiskStatus];
-    if (code) scoresByCode[code].push(entry.score);
+    if (code && typeof entry.score === 'number') scoresByCode[code].push(entry.score);
   }
   return GOLD_CATEGORY_ORDER.map(({ code, label }) => {
     const scores = scoresByCode[code];
