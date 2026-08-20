@@ -14,6 +14,10 @@ test('REPORT_CSS is a non-empty string containing the navy/lime palette', () => 
   assert.match(REPORT_CSS, /--lime/);
 });
 
+test('REPORT_CSS styles the ".tot" total-row class used by the processing-breakdown table', () => {
+  assert.match(REPORT_CSS, /\.tot td\{/);
+});
+
 test('escapeHtml escapes the five HTML-significant characters', () => {
   assert.equal(escapeHtml(`<a href="x">A & B's "quote"</a>`), '&lt;a href=&quot;x&quot;&gt;A &amp; B&#39;s &quot;quote&quot;&lt;/a&gt;');
 });

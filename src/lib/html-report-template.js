@@ -96,6 +96,7 @@ const REPORT_CSS = `
   tbody tr:last-child td{border-bottom:none}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   td.ctr,th.ctr{text-align:center}
+  .tot td{font-weight:800;background:#f7f8fa}
   .row-miss{background:#fdf2f2}
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;
     padding:3px 9px;border-radius:999px;white-space:nowrap;line-height:1.3}
