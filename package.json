@@ -1,5 +1,5 @@
 {
-  "name": "fraudx-claim-eval",
+  "name": "fraudx-eval-harness",
   "version": "1.0.0",
   "description": "Bucket-driven promptfoo eval for the FraudX document-ingestion and report pipeline",
   "private": true,

@@ -1,4 +1,4 @@
-# fraudx-claim-eval
+# fraudx-eval-harness
 
 A standalone promptfoo eval that re-runs an existing, already-processed FraudX claim (named by
 `SOURCE_BUCKET_ID`) through the document-ingestion + report pipeline against a freshly-created
