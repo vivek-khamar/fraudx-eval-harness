@@ -332,6 +332,39 @@ test('renderQaAppendix renders a card per question with chip, verdict line, clea
   assert.match(html, /<a href="https:\/\/a\.test\/a\.pdf"/);
   assert.match(html, /Good match\./);
   assert.doesNotMatch(html, /InTextCitation/); // raw citation tags must be stripped
+  // Q1's [1] citation marker must be visually upgraded to a superscript, not left as bare brackets.
+  assert.match(html, /<sup class="c">\[1\]<\/sup>/);
+  // Q2 has no citations at all — the legend must say so, not render an empty "Sources:" line.
+  assert.match(html, /No source document cited/);
+});
+
+test('renderQaAppendix renders a citation source without a url as plain text, not a link', () => {
+  const claimData = fullClaimData();
+  claimData.perQuestionBreakdown.push({
+    predefinedQuestionId: 3,
+    question: 'Is there a third question?',
+    actualAnswer: 'RISK UNKNOWN: no url here <InTextCitation fileName="b.pdf" documentId="d2" chunkId="c2"></InTextCitation>.',
+    riskStatus: 'UNSURE', expectedRiskStatus: 'UNSURE', riskStatusMatches: true,
+    score: undefined, citationMatchScore: undefined, reason: 'No url provided.',
+  });
+  claimData.narrative.perQuestionVerdicts[3] = 'Fine either way.';
+
+  const html = renderQaAppendix(claimData);
+  assert.match(html, /b\.pdf&nbsp;<span class="idx">\[1\]<\/span>/);
+  assert.doesNotMatch(html, /<a[^>]*>b\.pdf/); // no url -> no <a> wrapper
+  // metrics-inline's own Semantic field N/A guard (independent of scoreBar, used in the detailed table instead).
+  assert.match(html, /Semantic: <b>N\/A<\/b>/);
+
+  // scoreBar (used by renderDetailedResultsTable, not the Q&A appendix) has its own N/A branch.
+  const tableHtml = renderDetailedResultsTable(claimData);
+  assert.match(tableHtml, /<span class="mini" style="color:var\(--muted\)">N\/A<\/span>/);
+});
+
+test('renderQaAppendix preserves newlines in the answer text as <br> instead of collapsing them', () => {
+  const claimData = fullClaimData();
+  claimData.perQuestionBreakdown[0].actualAnswer = 'Line one.\nLine two.';
+  const html = renderQaAppendix(claimData);
+  assert.match(html, /Line one\.<br>Line two\./);
 });
 
 test('renderReportHtml assembles a full document with all sections and no leftover <script> tags', () => {

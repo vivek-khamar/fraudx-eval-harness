@@ -527,7 +527,7 @@ function renderQaAppendix(claimData) {
     const verdictSymbol = kind === 'good' ? '&#10003;' : kind === 'bad' ? '&#10007;' : '&asymp;';
     const oneLiner = claimData.narrative.perQuestionVerdicts[q.predefinedQuestionId] || '';
     const { cleanedText, legend } = formatAnswerWithCitations(q.actualAnswer);
-    const answerHtml = escapeHtml(cleanedText).replace(/\[(\d+)\]/g, '<sup class="c">[$1]</sup>');
+    const answerHtml = escapeHtml(cleanedText).replace(/\n/g, '<br>').replace(/\[(\d+)\]/g, '<sup class="c">[$1]</sup>');
     const sourcesHtml = legend.length === 0
       ? '<span style="color:var(--muted)">No source document cited</span>'
       : legend.map((l) => l.url
@@ -546,7 +546,7 @@ function renderQaAppendix(claimData) {
       <div class="metrics-inline">
         <span>Expected: <b>${RISK_LABEL[q.expectedRiskStatus] || 'Unknown'}</b></span>
         <span>Risk match: <b style="color:${q.riskStatusMatches ? 'var(--good-ink)' : 'var(--critical)'}">${q.riskStatusMatches ? 'Yes' : 'No'}</b></span>
-        <span>Semantic: <b>${q.score}%</b></span>
+        <span>Semantic: <b>${typeof q.score === 'number' ? `${q.score}%` : 'N/A'}</b></span>
         <span>Citation: <b>${typeof q.citationMatchScore === 'number' ? `${q.citationMatchScore}%` : 'N/A'}</b></span>
       </div>
       <div class="reason"><b>Evaluator reasoning:</b> ${escapeHtml(q.reason)}</div>
