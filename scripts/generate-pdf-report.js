@@ -70,7 +70,10 @@ function isClaimRenderable(result) {
     output && output.ingestion &&
     typeof output.ingestion.docsSubmitted === 'number' &&
     typeof output.ingestion.docsComplete === 'number' &&
-    output.processing && result.vars?.expected &&
+    typeof output.ingestion.timeMs === 'number' &&
+    output.processing &&
+    typeof output.processing.timeMs === 'number' &&
+    result.vars?.expected &&
     typeof result.vars.expected.fraudRiskScore === 'number' &&
     typeof output.report?.fraudRiskScore === 'number' &&
     hasRequiredNamedScores(result.gradingResult?.namedScores)
@@ -159,6 +162,9 @@ async function generatePdfReports(resultsFilePath, reportsDir, now = () => new D
   const results = parsed.results.results;
   const generatedAt = formatLocalTimestamp(now());
 
+  if (!providedProvider && !process.env.GRADER_PROVIDER) {
+    throw new Error('GRADER_PROVIDER must be set (see .env.example)');
+  }
   const provider = providedProvider || await promptfoo.loadApiProvider(process.env.GRADER_PROVIDER);
   const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
 

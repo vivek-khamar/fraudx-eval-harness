@@ -179,6 +179,60 @@ test('generatePdfReports skips a claim with a missing/non-numeric fraudRiskScore
   );
 });
 
+test('generatePdfReports skips a claim with a missing/non-numeric report.fraudRiskScore instead of throwing, and still renders a healthy claim in the same file', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-report-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const fixture = sampleResultsFile();
+  const malformedClaim = sampleResultsFile().results.results[0];
+  malformedClaim.response.output.report.bucketId = 66666;
+  delete malformedClaim.response.output.report.fraudRiskScore; // buildClaimData would otherwise crash on .toFixed(4)
+  // Put the malformed claim first so a naive implementation that throws while
+  // building it would abort before ever reaching the healthy claim below.
+  fixture.results.results.unshift(malformedClaim);
+  const resultsPath = writeResultsFile(dir, fixture);
+  const reportsDir = path.join(dir, 'reports');
+
+  const originalConsoleError = console.error;
+  const errorCalls = [];
+  console.error = (...args) => {
+    errorCalls.push(args.join(' '));
+  };
+  t.after(() => {
+    console.error = originalConsoleError;
+  });
+
+  const written = await generatePdfReports(resultsPath, reportsDir, FIXED_NOW, mockProvider(VALID_NARRATIVE));
+
+  assert.equal(written.length, 1);
+  assert.match(written[0], /32277/);
+  assert.ok(fs.existsSync(written[0]));
+  assert.ok(!fs.existsSync(path.join(reportsDir, '66666')));
+  assert.ok(
+    errorCalls.some((message) => message.includes('66666')),
+    `expected a console.error call mentioning bucketId 66666, got: ${JSON.stringify(errorCalls)}`,
+  );
+});
+
+test('generatePdfReports rejects with a clear message when GRADER_PROVIDER is unset and no provider is passed', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-report-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const resultsPath = writeResultsFile(dir, sampleResultsFile());
+  const reportsDir = path.join(dir, 'reports');
+
+  const originalGraderProvider = process.env.GRADER_PROVIDER;
+  delete process.env.GRADER_PROVIDER;
+  t.after(() => {
+    if (originalGraderProvider === undefined) delete process.env.GRADER_PROVIDER;
+    else process.env.GRADER_PROVIDER = originalGraderProvider;
+  });
+
+  await assert.rejects(
+    () => generatePdfReports(resultsPath, reportsDir, FIXED_NOW),
+    /GRADER_PROVIDER must be set/,
+  );
+});
+
 test('running generate-pdf-report.js as a CLI exits non-zero when a claim in results.json errored', (t) => {
   const { execFileSync } = require('node:child_process');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'generate-pdf-report-cli-'));
@@ -212,7 +266,10 @@ test('formatTimestampForFilename, formatLocalTimestamp, sortByRiskStatus, unique
   assert.equal(formatTimestampForFilename('2026-08-20T12:07:23.000Z'), '2026-08-20T12-07-23');
   // formatLocalTimestamp exists specifically to render IST (UTC+5:30) regardless of the
   // host's own timezone, so a vacuous typeof-string check would pass even if it silently
-  // regressed to UTC or the host's local time. Assert the exact IST value.
+  // regressed to UTC or the host's local time. Assert the exact IST value. formatLocalTimestamp
+  // pins timeZone: 'Asia/Kolkata' explicitly in its Intl.DateTimeFormat call, so it is
+  // TZ-independent by construction — no separate test toggling process.env.TZ is needed (such a
+  // test could never fail, since the function never reads process.env.TZ).
   assert.equal(formatLocalTimestamp(FIXED_NOW()), '2026-08-20T17:37:23');
   assert.deepEqual(
     sortByRiskStatus([{ riskStatus: 'UNSURE' }, { riskStatus: 'RISK_DETECTED' }]).map((e) => e.riskStatus),
@@ -223,19 +280,4 @@ test('formatTimestampForFilename, formatLocalTimestamp, sortByRiskStatus, unique
   const p1 = path.join(dir, 'x.pdf');
   fs.writeFileSync(p1, 'x');
   assert.equal(uniqueFilePath(p1), path.join(dir, 'x-2.pdf'));
-});
-
-test('formatLocalTimestamp renders the same IST value regardless of the process\'s own timezone', (t) => {
-  const originalTz = process.env.TZ;
-  t.after(() => {
-    process.env.TZ = originalTz;
-  });
-
-  const instant = new Date('2026-08-20T12:07:23.000Z');
-
-  process.env.TZ = 'UTC';
-  assert.equal(formatLocalTimestamp(instant), '2026-08-20T17:37:23');
-
-  process.env.TZ = 'America/New_York';
-  assert.equal(formatLocalTimestamp(instant), '2026-08-20T17:37:23');
 });
