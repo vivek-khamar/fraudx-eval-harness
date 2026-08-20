@@ -261,3 +261,88 @@ test('renderFinalVerdict includes net read, what-went-right/wrong, and the reaso
   assert.match(html, /Under-called 9 risks\./);
   assert.match(html, /The error pattern is a conservative-bias failure mode\./);
 });
+
+const {
+  renderDetailedResultsTable, renderMetadataMatchTable, renderQaAppendix, renderReportHtml,
+} = require('./html-report-template');
+
+function fullClaimData() {
+  return {
+    bucketId: 32277,
+    claimantName: 'Jose Briones',
+    generatedAt: '2026-08-20T12:07:23',
+    docsSubmitted: 5, docsComplete: 5, docsFailed: 0, failedDocuments: [],
+    ingestionTimeMs: 366800, processingTimeMs: 722500,
+    namedScores: { riskStatusMatch: 0.5, answerContentMatch: 0.6, citationMatch: 0.3, fraudRiskScoreMatch: 0, entityFieldsMatch: 0.67 },
+    accuracy: 55,
+    fraudRiskScoreExpected: 0.7524, fraudRiskScoreActual: 0.7071, fraudRiskScoreMatches: false,
+    metadataMatch: [
+      { field: 'Risk Score (±10% tol.)', expected: '0.7524 · 75.24%', actual: '0.7071 · 70.71%', matches: false },
+      { field: 'Claimant Name', expected: 'Jose Briones', actual: 'Jose Briones', matches: true },
+    ],
+    perQuestionBreakdown: [
+      {
+        predefinedQuestionId: 1,
+        question: 'Are any of the medical providers bad actors?',
+        actualAnswer: 'RISK DETECTED: Provider X is a bad actor <InTextCitation url="https://a.test/a.pdf" fileName="a.pdf" documentId="d1" chunkId="c1"></InTextCitation>.',
+        riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: true,
+        score: 90, citationMatchScore: 50, reason: 'Good match.',
+      },
+      {
+        predefinedQuestionId: 2,
+        question: 'Are any attorneys bad actors?',
+        actualAnswer: 'RISK DETECTED: attorney is a bad actor.',
+        riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'UNSURE', riskStatusMatches: false,
+        score: 0, citationMatchScore: undefined, reason: 'Opposite conclusion.',
+      },
+    ],
+    narrative: {
+      summaryPanel: ['Summary bullet.'], questionsPanel: ['Questions bullet.'],
+      citationsPanel: ['Citations bullet.'], overallPanel: ['Overall bullet.'],
+      finalVerdict: { netRead: ['Net read bullet.'], whatWentRight: ['Right bullet.'], whatWentWrong: ['Wrong bullet.'], reasoning: 'Reasoning paragraph.' },
+      perQuestionVerdicts: { 1: 'Right risk call, well cited.', 2: 'Wrong direction entirely.' },
+    },
+  };
+}
+
+test('renderDetailedResultsTable renders one row per question, tinting mismatches', () => {
+  const html = renderDetailedResultsTable(fullClaimData());
+  assert.match(html, /Q1/);
+  assert.match(html, /Q2/);
+  assert.match(html, /row-miss/); // Q2 mismatched
+  assert.match(html, /90%/);
+});
+
+test('renderMetadataMatchTable renders expected/actual/match for every field', () => {
+  const html = renderMetadataMatchTable(fullClaimData());
+  assert.match(html, /Risk Score/);
+  assert.match(html, /75\.24%/);
+  assert.match(html, /Claimant Name/);
+  assert.match(html, /chip yes/);
+  assert.match(html, /chip no/);
+});
+
+test('renderQaAppendix renders a card per question with chip, verdict line, cleaned answer, reasoning, and hyperlinked sources', () => {
+  const html = renderQaAppendix(fullClaimData());
+  assert.match(html, /Are any of the medical providers bad actors\?/);
+  assert.match(html, /verdict-line good/); // Q1: matched, score 90
+  assert.match(html, /verdict-line bad/);  // Q2: mismatched
+  assert.match(html, /Right risk call, well cited\./);
+  assert.match(html, /Wrong direction entirely\./);
+  assert.match(html, /<a href="https:\/\/a\.test\/a\.pdf"/);
+  assert.match(html, /Good match\./);
+  assert.doesNotMatch(html, /InTextCitation/); // raw citation tags must be stripped
+});
+
+test('renderReportHtml assembles a full document with all sections and no leftover <script> tags', () => {
+  const html = renderReportHtml(fullClaimData());
+  assert.match(html, /<style>/);
+  assert.match(html, /Ingestion Summary/);
+  assert.match(html, /Processing Summary/);
+  assert.match(html, /Accuracy Summary/);
+  assert.match(html, /Final Verdict/);
+  assert.match(html, /Detailed Results Table/);
+  assert.match(html, /Claim Metadata Match/);
+  assert.match(html, /All Questions/);
+  assert.doesNotMatch(html, /<script/);
+});

@@ -1,5 +1,7 @@
 'use strict';
 
+const { formatAnswerWithCitations } = require('./extract-cited-file-names');
+
 // Ported verbatim from the reference report's <style> block
 // (/home/vivek/Downloads/claim_eval_report.html) — the navy/lime brand
 // palette, card/chip/table/chart styling, and its @media print rules
@@ -467,6 +469,124 @@ function renderFinalVerdict(claimData) {
   </section>`;
 }
 
+const RISK_LABEL = { RISK_DETECTED: 'Risk Detected', RISK_NOT_DETECTED: 'Risk Not Detected', UNSURE: 'Not Sure' };
+
+function riskChip(riskStatus) {
+  const code = RISK_CODE[riskStatus] || 'ns';
+  return `<span class="chip ${code}">${RISK_LABEL[riskStatus] || 'Unknown'}</span>`;
+}
+
+function scoreBar(score) {
+  if (typeof score !== 'number') return '<span class="mini" style="color:var(--muted)">N/A</span>';
+  const color = score >= 80 ? 'var(--good)' : score >= 40 ? 'var(--warning)' : 'var(--critical)';
+  return `<span class="mbar"><i style="width:${score}%;background:${color}"></i></span><span class="mini">${score}%</span>`;
+}
+
+function renderDetailedResultsTable(claimData) {
+  const rows = claimData.perQuestionBreakdown.map((q) => `
+    <tr class="${q.riskStatusMatches ? '' : 'row-miss'}">
+      <td><b>Q${q.predefinedQuestionId}</b></td>
+      <td>${riskChip(q.riskStatus)}</td>
+      <td>${riskChip(q.expectedRiskStatus)}</td>
+      <td class="ctr"><span class="chip ${q.riskStatusMatches ? 'yes' : 'no'}">${q.riskStatusMatches ? 'MATCH' : 'MISS'}</span></td>
+      <td class="num">${scoreBar(q.score)}</td>
+      <td class="num">${typeof q.citationMatchScore === 'number' ? `${q.citationMatchScore}%` : '<span style="color:var(--muted)">N/A</span>'}</td>
+    </tr>`).join('');
+  return `
+  <section>
+    <div class="sec-head"><h2>Detailed Results Table</h2></div>
+    <p class="sec-sub">Every question's current output vs expected output, whether the risk direction matched, and the semantic and citation match scores.</p>
+    <table>
+      <thead><tr><th>Question ID</th><th>Current Output</th><th>Expected Output</th><th class="ctr">Risk Match</th><th class="num">Semantic Match</th><th class="num">Citation Match</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </section>`;
+}
+
+function renderMetadataMatchTable(claimData) {
+  const rows = claimData.metadataMatch.map((m) => `
+    <tr>
+      <td><b>${escapeHtml(m.field)}</b></td>
+      <td>${escapeHtml(m.expected)}</td>
+      <td>${escapeHtml(m.actual)}</td>
+      <td class="ctr"><span class="chip ${m.matches ? 'yes' : 'no'}">${m.matches ? 'YES' : 'NO'}</span></td>
+    </tr>`).join('');
+  return `
+  <section>
+    <div class="sec-head"><h2>Claim Metadata Match</h2></div>
+    <table>
+      <thead><tr><th>Field</th><th>Expected</th><th>Actual</th><th class="ctr">Match</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </section>`;
+}
+
+function renderQaAppendix(claimData) {
+  const cards = claimData.perQuestionBreakdown.map((q) => {
+    const kind = verdictKind(q);
+    const verdictSymbol = kind === 'good' ? '&#10003;' : kind === 'bad' ? '&#10007;' : '&asymp;';
+    const oneLiner = claimData.narrative.perQuestionVerdicts[q.predefinedQuestionId] || '';
+    const { cleanedText, legend } = formatAnswerWithCitations(q.actualAnswer);
+    const answerHtml = escapeHtml(cleanedText).replace(/\[(\d+)\]/g, '<sup class="c">[$1]</sup>');
+    const sourcesHtml = legend.length === 0
+      ? '<span style="color:var(--muted)">No source document cited</span>'
+      : legend.map((l) => l.url
+        ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.fileName)}</a>&nbsp;<span class="idx">[${l.number}]</span>`
+        : `${escapeHtml(l.fileName)}&nbsp;<span class="idx">[${l.number}]</span>`).join(' &middot; ');
+
+    return `
+    <div class="qcard">
+      <div class="qtop">
+        <span class="qid">Q${q.predefinedQuestionId}</span>
+        <span class="qtext">${escapeHtml(q.question)}</span>
+        <span class="qchips">${riskChip(q.riskStatus)}</span>
+      </div>
+      <div class="verdict-line ${kind}">${verdictSymbol}&nbsp;${escapeHtml(oneLiner)}</div>
+      <p class="ans">${answerHtml}</p>
+      <div class="metrics-inline">
+        <span>Expected: <b>${RISK_LABEL[q.expectedRiskStatus] || 'Unknown'}</b></span>
+        <span>Risk match: <b style="color:${q.riskStatusMatches ? 'var(--good-ink)' : 'var(--critical)'}">${q.riskStatusMatches ? 'Yes' : 'No'}</b></span>
+        <span>Semantic: <b>${q.score}%</b></span>
+        <span>Citation: <b>${typeof q.citationMatchScore === 'number' ? `${q.citationMatchScore}%` : 'N/A'}</b></span>
+      </div>
+      <div class="reason"><b>Evaluator reasoning:</b> ${escapeHtml(q.reason)}</div>
+      <div class="srcs"><b>Sources:</b> ${sourcesHtml}</div>
+    </div>`;
+  }).join('');
+
+  return `
+  <section>
+    <div class="sec-head"><h2>All Questions &mdash; Answers &amp; Evaluation</h2></div>
+    <p class="sec-sub">Full engine answer for every question, a highlighted one-line verdict, the evaluator's reasoning, and hyperlinked sources.</p>
+    ${cards}
+  </section>`;
+}
+
+function renderReportHtml(claimData) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Claim Eval Report &middot; Bucket ${claimData.bucketId}</title>
+<style>${REPORT_CSS}</style>
+</head>
+<body>
+<div class="wrap">
+  ${renderHeroHeader(claimData)}
+  ${renderKpiCards(claimData)}
+  ${renderIngestionSummary(claimData)}
+  ${renderProcessingSummary(claimData)}
+  ${renderAccuracySummary(claimData)}
+  ${renderFinalVerdict(claimData)}
+  ${renderDetailedResultsTable(claimData)}
+  ${renderMetadataMatchTable(claimData)}
+  ${renderQaAppendix(claimData)}
+  <div class="foot">Generated ${claimData.generatedAt} by the fraudx-eval-harness eval pipeline.</div>
+</div>
+</body>
+</html>`;
+}
+
 module.exports = {
   REPORT_CSS,
   escapeHtml,
@@ -486,4 +606,8 @@ module.exports = {
   renderProcessingSummary,
   renderAccuracySummary,
   renderFinalVerdict,
+  renderDetailedResultsTable,
+  renderMetadataMatchTable,
+  renderQaAppendix,
+  renderReportHtml,
 };
