@@ -24,6 +24,6 @@
     "@aws-sdk/client-s3": "^3.1111.0",
     "dotenv": "^17.4.2",
     "pdf-parse": "^2.4.5",
-    "pdfkit": "^0.19.1"
+    "puppeteer": "^25.8.0"
   }
 }
