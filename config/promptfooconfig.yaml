@@ -2,7 +2,7 @@ prompts:
   - "{{bucket.sourceBucketId}}"
 
 providers:
-  - id: file://src/provider.js
+  - id: file://../src/provider.js
 
 defaultTest:
   options:
@@ -13,7 +13,7 @@ defaultTest:
   assert:
     - type: javascript
       metric: qa_match
-      value: file://src/lib/qa-match-assertion.js
+      value: file://../src/lib/qa-match-assertion.js
     - type: llm-rubric
       metric: report_quality
       value: >-
@@ -27,8 +27,8 @@ defaultTest:
         score should reflect overall quality across all these criteria as a single 0-1 value.
     - type: javascript
       metric: metadata_match
-      value: file://src/lib/metadata-match-assertion.js
+      value: file://../src/lib/metadata-match-assertion.js
 
 # Test cases are generated live from the existing bucket named by SOURCE_BUCKET_ID
 # (see scripts/build-tests-vars.js) into tests.vars.yaml — never hand-edit that file.
-tests: file://tests.vars.yaml
+tests: file://../tests.vars.yaml
