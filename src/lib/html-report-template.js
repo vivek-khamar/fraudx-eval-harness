@@ -494,7 +494,7 @@ function renderDetailedResultsTable(claimData) {
     </tr>`).join('');
   return `
   <section>
-    <div class="sec-head"><h2>Detailed Results Table</h2></div>
+    <div class="sec-head"><span class="sec-num">＝</span><h2>Detailed Results Table</h2></div>
     <p class="sec-sub">Every question's current output vs expected output, whether the risk direction matched, and the semantic and citation match scores.</p>
     <table>
       <thead><tr><th>Question ID</th><th>Current Output</th><th>Expected Output</th><th class="ctr">Risk Match</th><th class="num">Semantic Match</th><th class="num">Citation Match</th></tr></thead>
@@ -513,12 +513,31 @@ function renderMetadataMatchTable(claimData) {
     </tr>`).join('');
   return `
   <section>
-    <div class="sec-head"><h2>Claim Metadata Match</h2></div>
+    <div class="sec-head"><span class="sec-num">＝</span><h2>Claim Metadata Match</h2></div>
     <table>
       <thead><tr><th>Field</th><th>Expected</th><th>Actual</th><th class="ctr">Match</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </section>`;
+}
+
+// Groups a citation legend by source file — a question citing the same document
+// multiple times (common: several passages from one PDF) gets one combined
+// "file.pdf [1][2][3]" entry instead of the filename repeated once per citation,
+// matching the reference report's own srcHtml() grouping.
+function groupSourcesLegend(legend) {
+  const order = [];
+  const groups = new Map();
+  for (const l of legend) {
+    if (!groups.has(l.fileName)) {
+      groups.set(l.fileName, { fileName: l.fileName, url: l.url, numbers: [] });
+      order.push(l.fileName);
+    }
+    const group = groups.get(l.fileName);
+    if (!group.url && l.url) group.url = l.url;
+    group.numbers.push(l.number);
+  }
+  return order.map((fileName) => groups.get(fileName));
 }
 
 function renderQaAppendix(claimData) {
@@ -528,11 +547,15 @@ function renderQaAppendix(claimData) {
     const oneLiner = claimData.narrative.perQuestionVerdicts[q.predefinedQuestionId] || '';
     const { cleanedText, legend } = formatAnswerWithCitations(q.actualAnswer);
     const answerHtml = escapeHtml(cleanedText).replace(/\n/g, '<br>').replace(/\[(\d+)\]/g, '<sup class="c">[$1]</sup>');
-    const sourcesHtml = legend.length === 0
+    const groupedSources = groupSourcesLegend(legend);
+    const sourcesHtml = groupedSources.length === 0
       ? '<span style="color:var(--muted)">No source document cited</span>'
-      : legend.map((l) => l.url
-        ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.fileName)}</a>&nbsp;<span class="idx">[${l.number}]</span>`
-        : `${escapeHtml(l.fileName)}&nbsp;<span class="idx">[${l.number}]</span>`).join(' &middot; ');
+      : groupedSources.map((g) => {
+        const idx = g.numbers.map((n) => `[${n}]`).join('');
+        return g.url
+          ? `<a href="${escapeHtml(g.url)}" target="_blank" rel="noopener">${escapeHtml(g.fileName)}</a>&nbsp;<span class="idx">${idx}</span>`
+          : `${escapeHtml(g.fileName)}&nbsp;<span class="idx">${idx}</span>`;
+      }).join(' &middot; ');
 
     return `
     <div class="qcard">
@@ -556,7 +579,7 @@ function renderQaAppendix(claimData) {
 
   return `
   <section>
-    <div class="sec-head"><h2>All Questions &mdash; Answers &amp; Evaluation</h2></div>
+    <div class="sec-head"><span class="sec-num">＝</span><h2>All Questions &mdash; Answers &amp; Evaluation</h2></div>
     <p class="sec-sub">Full engine answer for every question, a highlighted one-line verdict, the evaluator's reasoning, and hyperlinked sources.</p>
     ${cards}
   </section>`;

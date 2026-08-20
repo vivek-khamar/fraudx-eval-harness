@@ -342,6 +342,11 @@ test('renderDetailedResultsTable renders one row per question, tinting mismatche
   assert.match(html, /90%/);
 });
 
+test('renderDetailedResultsTable gives its heading the same navy sec-num badge as the numbered sections, using the reference\'s "＝" marker', () => {
+  const html = renderDetailedResultsTable(fullClaimData());
+  assert.match(html, /<span class="sec-num">＝<\/span><h2>Detailed Results Table<\/h2>/);
+});
+
 test('renderMetadataMatchTable renders expected/actual/match for every field', () => {
   const html = renderMetadataMatchTable(fullClaimData());
   assert.match(html, /Risk Score/);
@@ -349,6 +354,11 @@ test('renderMetadataMatchTable renders expected/actual/match for every field', (
   assert.match(html, /Claimant Name/);
   assert.match(html, /chip yes/);
   assert.match(html, /chip no/);
+});
+
+test('renderMetadataMatchTable gives its heading the same navy sec-num badge as the numbered sections', () => {
+  const html = renderMetadataMatchTable(fullClaimData());
+  assert.match(html, /<span class="sec-num">＝<\/span><h2>Claim Metadata Match<\/h2>/);
 });
 
 test('renderQaAppendix renders a card per question with chip, verdict line, cleaned answer, reasoning, and hyperlinked sources', () => {
@@ -394,6 +404,24 @@ test('renderQaAppendix preserves newlines in the answer text as <br> instead of 
   claimData.perQuestionBreakdown[0].actualAnswer = 'Line one.\nLine two.';
   const html = renderQaAppendix(claimData);
   assert.match(html, /Line one\.<br>Line two\./);
+});
+
+test('renderQaAppendix groups multiple citations of the same source file into one Sources entry, not one per citation', () => {
+  const claimData = fullClaimData();
+  claimData.perQuestionBreakdown[0].actualAnswer =
+    'RISK DETECTED: first point <InTextCitation url="https://a.test/a.pdf" fileName="a.pdf" documentId="d1" chunkId="c1"></InTextCitation> ' +
+    'and a second point from the same file <InTextCitation url="https://a.test/a.pdf" fileName="a.pdf" documentId="d1" chunkId="c9"></InTextCitation>.';
+
+  const html = renderQaAppendix(claimData);
+  // One combined entry for a.pdf carrying both citation numbers, not two separate "a.pdf" links.
+  assert.match(html, /<a href="https:\/\/a\.test\/a\.pdf"[^>]*>a\.pdf<\/a>&nbsp;<span class="idx">\[1\]\[2\]<\/span>/);
+  const occurrences = (html.match(/>a\.pdf</g) || []).length;
+  assert.equal(occurrences, 1);
+});
+
+test('renderQaAppendix gives its heading the same navy sec-num badge as the numbered sections', () => {
+  const html = renderQaAppendix(fullClaimData());
+  assert.match(html, /<span class="sec-num">＝<\/span><h2>All Questions/);
 });
 
 test('renderReportHtml assembles a full document with all sections and no leftover <script> tags', () => {
