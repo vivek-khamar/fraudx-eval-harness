@@ -90,3 +90,48 @@ test('computeSemanticByGoldCategory averages score per expected gold category, a
     { label: 'Gold: Not Detected', count: 0, avgScore: 0 },
   ]);
 });
+
+const {
+  renderRiskStatusMatchBar, renderRiskDistributionChart,
+  renderSemanticHistogram, renderSemanticByGoldCategoryChart,
+} = require('./html-report-template');
+
+test('renderRiskStatusMatchBar sizes the two flex segments to the matched/mismatched counts', () => {
+  const html = renderRiskStatusMatchBar(3, 1);
+  assert.match(html, /flex:3;background:var\(--good\)/);
+  assert.match(html, /flex:1;background:var\(--critical\)/);
+  assert.match(html, /Match &middot; 3/);
+  assert.match(html, /Mismatch &middot; 1/);
+  assert.match(html, /75% of answers/);
+});
+
+test('renderRiskDistributionChart renders one grouped bar per risk category with correct counts', () => {
+  const svg = renderRiskDistributionChart({ model: { det: 2, nd: 0, ns: 1 }, gold: { det: 1, nd: 0, ns: 2 } });
+  assert.match(svg, /<svg/);
+  assert.match(svg, />2<\/text>/); // model det count
+  assert.match(svg, />1<\/text>/); // gold det count (also model ns count — both appear)
+  assert.match(svg, /Risk Detected/);
+  assert.match(svg, /Not Sure/);
+});
+
+test('renderSemanticHistogram renders a bar per bucket with the total count labeled', () => {
+  const buckets = { labels: ['0-20', '21-40', '41-60', '61-80', '81-100'], matched: [0, 0, 0, 0, 2], mismatched: [1, 0, 0, 0, 0], total: [1, 0, 0, 0, 2] };
+  const svg = renderSemanticHistogram(buckets);
+  assert.match(svg, /<svg/);
+  assert.match(svg, /81-100/);
+  assert.match(svg, />2<\/text>/);
+});
+
+test('renderSemanticByGoldCategoryChart shows "— no questions —" for a category with zero count', () => {
+  const categories = [
+    { label: 'Gold: Risk Detected', count: 2, avgScore: 50 },
+    { label: 'Gold: Not Sure', count: 0, avgScore: 0 },
+    { label: 'Gold: Not Detected', count: 0, avgScore: 0 },
+  ];
+  const svg = renderSemanticByGoldCategoryChart(categories);
+  assert.match(svg, /Gold: Risk Detected/);
+  assert.match(svg, /50%/);
+  // The function emits HTML entities (markup), not the literal em-dash
+  // character (rendered text) — match the source form it actually outputs.
+  assert.match(svg, /&mdash; no questions &mdash;/);
+});

@@ -215,6 +215,108 @@ function computeSemanticByGoldCategory(perQuestionBreakdown) {
   });
 }
 
+function renderRiskStatusMatchBar(matched, mismatched) {
+  const total = matched + mismatched;
+  const pct = total ? Math.round((matched / total) * 100) : 0;
+  return `
+    <div class="chart-card">
+      <h4>Risk-status match — ${matched} correct, ${mismatched} mismatched</h4>
+      <div style="height:26px;border-radius:8px;overflow:hidden;background:#eef0f3;margin-top:12px;display:flex">
+        <div style="flex:${matched};background:var(--good);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px">Match &middot; ${matched}</div>
+        <div style="flex:${mismatched};background:var(--critical);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px">Mismatch &middot; ${mismatched}</div>
+      </div>
+      <p class="cap">${pct}% of answers pointed in the correct risk direction.</p>
+    </div>`;
+}
+
+function renderRiskDistributionChart(distribution) {
+  const data = [
+    ['Risk Detected', distribution.model.det, distribution.gold.det],
+    ['Not Detected', distribution.model.nd, distribution.gold.nd],
+    ['Not Sure', distribution.model.ns, distribution.gold.ns],
+  ];
+  const W = 380, H = 190, pad = { l: 90, r: 20, t: 10, b: 26 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, bh = ih / data.length;
+  const maxValue = Math.max(1, ...data.flatMap(([, modelCount, goldCount]) => [modelCount, goldCount]));
+  const max = Math.max(5, Math.ceil(maxValue / 5) * 5);
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  for (let g = 0; g <= 5; g++) {
+    const gridValue = (max * g) / 5;
+    const x = pad.l + iw * (gridValue / max);
+    s += `<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${pad.t + ih}" stroke="var(--grid)"/>`;
+    s += `<text x="${x}" y="${H - 8}" font-size="9" fill="var(--muted)" text-anchor="middle">${Math.round(gridValue)}</text>`;
+  }
+  data.forEach(([label, modelCount, goldCount], i) => {
+    const y = pad.t + bh * i + 6;
+    const h = (bh - 16) / 2;
+    const w1 = iw * (modelCount / max);
+    const w2 = iw * (goldCount / max);
+    s += `<text x="${pad.l - 8}" y="${y + h}" font-size="10.5" fill="var(--ink-2)" text-anchor="end">${label}</text>`;
+    s += `<rect x="${pad.l}" y="${y}" width="${w1}" height="${h}" rx="3" fill="var(--blue)"/>`;
+    s += `<text x="${pad.l + w1 + 5}" y="${y + h - 1}" font-size="10" font-weight="700" fill="var(--ink)">${modelCount}</text>`;
+    s += `<rect x="${pad.l}" y="${y + h + 3}" width="${w2}" height="${h}" rx="3" fill="var(--muted)"/>`;
+    s += `<text x="${pad.l + w2 + 5}" y="${y + h * 2 + 2}" font-size="10" font-weight="700" fill="var(--ink)">${goldCount}</text>`;
+  });
+  s += `</svg>`;
+  return s;
+}
+
+function renderSemanticHistogram(buckets) {
+  const { labels, matched, mismatched, total } = buckets;
+  const W = 380, H = 196, pad = { l: 34, r: 12, t: 14, b: 34 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, bw = iw / total.length;
+  const maxValue = Math.max(1, ...total);
+  const step = Math.max(1, Math.ceil(maxValue / 4));
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  for (let g = 0; g <= maxValue; g += step) {
+    const y = pad.t + ih - ih * (g / maxValue);
+    s += `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="var(--grid)"/>`;
+    s += `<text x="${pad.l - 6}" y="${y + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${g}</text>`;
+  }
+  total.forEach((v, i) => {
+    const x = pad.l + bw * i + 8, w = bw - 16;
+    const hMismatch = ih * (mismatched[i] / maxValue);
+    const hMatch = ih * (matched[i] / maxValue);
+    const yMismatch = pad.t + ih - hMismatch;
+    const yMatch = yMismatch - hMatch - (hMatch && hMismatch ? 2 : 0);
+    if (mismatched[i] > 0) s += `<rect x="${x}" y="${yMismatch}" width="${w}" height="${hMismatch}" rx="4" fill="var(--critical)"/>`;
+    if (matched[i] > 0) s += `<rect x="${x}" y="${yMatch}" width="${w}" height="${hMatch}" rx="4" fill="var(--good)"/>`;
+    if (v > 0) s += `<text x="${x + w / 2}" y="${(matched[i] ? yMatch : yMismatch) - 4}" font-size="11" font-weight="800" fill="var(--ink)" text-anchor="middle">${v}</text>`;
+    s += `<text x="${x + w / 2}" y="${H - 18}" font-size="9" fill="var(--muted)" text-anchor="middle">${labels[i]}</text>`;
+  });
+  s += `<text x="${pad.l + iw / 2}" y="${H - 4}" font-size="8.5" fill="var(--muted)" text-anchor="middle">semantic match % (vs gold answer)</text>`;
+  s += `</svg>`;
+  return s;
+}
+
+function renderSemanticByGoldCategoryChart(categories) {
+  const W = 760, H = 170, pad = { l: 150, r: 60, t: 10, b: 22 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, bh = ih / categories.length;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  for (let g = 0; g <= 100; g += 20) {
+    const x = pad.l + iw * (g / 100);
+    s += `<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${pad.t + ih}" stroke="var(--grid)"/>`;
+    s += `<text x="${x}" y="${H - 6}" font-size="9" fill="var(--muted)" text-anchor="middle">${g}%</text>`;
+  }
+  categories.forEach(({ label, count, avgScore }, i) => {
+    const y = pad.t + bh * i + 10, h = bh - 30;
+    s += `<text x="${pad.l - 10}" y="${y + h / 2 - 2}" font-size="11" font-weight="600" fill="var(--ink-2)" text-anchor="end">${escapeHtml(label)}</text>`;
+    s += `<text x="${pad.l - 10}" y="${y + h / 2 + 12}" font-size="9" fill="var(--muted)" text-anchor="end">${count} question${count === 1 ? '' : 's'}</text>`;
+    s += `<rect x="${pad.l}" y="${y}" width="${iw}" height="${h}" rx="5" fill="#e9e8e2"/>`;
+    const w = iw * (avgScore / 100);
+    if (count > 0) {
+      s += `<rect x="${pad.l}" y="${y}" width="${w}" height="${h}" rx="5" fill="var(--blue)"/>`;
+      s += `<text x="${pad.l + w + 8}" y="${y + h / 2 + 4}" font-size="12" font-weight="800" fill="var(--ink)">${avgScore}%</text>`;
+    } else {
+      s += `<text x="${pad.l + 8}" y="${y + h / 2 + 4}" font-size="11" fill="var(--muted)">&mdash; no questions &mdash;</text>`;
+    }
+  });
+  s += `</svg>`;
+  return s;
+}
+
 module.exports = {
   REPORT_CSS,
   escapeHtml,
@@ -223,4 +325,8 @@ module.exports = {
   computeRiskDistribution,
   computeSemanticBuckets,
   computeSemanticByGoldCategory,
+  renderRiskStatusMatchBar,
+  renderRiskDistributionChart,
+  renderSemanticHistogram,
+  renderSemanticByGoldCategoryChart,
 };
