@@ -105,7 +105,7 @@ own report, not a hand-curated answer key.
     The assertion's own score is the average of `riskStatusMatch` and `answerContentMatch`, plus
     `citationMatch` as a third term whenever at least one question in the claim was graded for
     it; `pass` defaults to `score > 0` unless a `threshold` is set on the `qa_match` assert entry
-    in `promptfooconfig.yaml`.
+    in `config/promptfooconfig.yaml`.
   - `report_quality` (`llm-rubric`) judges the report's summary against the existing bucket's own
     summary and `citedDocumentsText` (fetched by `src/provider.js`, never from the expected/
     answer-key data — see below) on completeness, clinical correctness, missing information, and

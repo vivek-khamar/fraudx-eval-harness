@@ -6,13 +6,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
 
-const configPath = path.join(__dirname, 'promptfooconfig.yaml');
+const configPath = path.join(__dirname, '..', 'config', 'promptfooconfig.yaml');
 const config = yaml.load(fs.readFileSync(configPath, 'utf8'));
 
 test('config declares exactly one provider pointing at the local src/provider.js', () => {
   assert.ok(Array.isArray(config.providers));
   assert.equal(config.providers.length, 1);
-  assert.equal(config.providers[0].id, 'file://src/provider.js');
+  // Relative to config/promptfooconfig.yaml's own directory, not the repo root — promptfoo
+  // resolves every file:// reference relative to the config file's location.
+  assert.equal(config.providers[0].id, 'file://../src/provider.js');
 });
 
 test('config reads the grading provider from GRADER_PROVIDER with no hardcoded default', () => {
@@ -25,7 +27,7 @@ test('config loads test cases from tests.vars.yaml via a whole-file reference, n
   // never JSON-parsed) — see commit 1af5c85. A top-level `tests: file://tests.vars.yaml` reference
   // goes through a different code path (loadTestsFromGlob) that parses the whole file up front, so
   // bucket/expected arrive as real objects. Do not go back to per-field file:// vars.
-  assert.equal(config.tests, 'file://tests.vars.yaml');
+  assert.equal(config.tests, 'file://../tests.vars.yaml');
 });
 
 test('config declares exactly three assertions: qa_match, report_quality, metadata_match', () => {
@@ -35,7 +37,7 @@ test('config declares exactly three assertions: qa_match, report_quality, metada
 
   const qaMatch = asserts.find((a) => a.metric === 'qa_match');
   assert.equal(qaMatch.type, 'javascript');
-  assert.equal(qaMatch.value, 'file://src/lib/qa-match-assertion.js');
+  assert.equal(qaMatch.value, 'file://../src/lib/qa-match-assertion.js');
 
   const reportQuality = asserts.find((a) => a.metric === 'report_quality');
   assert.equal(reportQuality.type, 'llm-rubric');
@@ -44,5 +46,5 @@ test('config declares exactly three assertions: qa_match, report_quality, metada
 
   const metadataMatch = asserts.find((a) => a.metric === 'metadata_match');
   assert.equal(metadataMatch.type, 'javascript');
-  assert.equal(metadataMatch.value, 'file://src/lib/metadata-match-assertion.js');
+  assert.equal(metadataMatch.value, 'file://../src/lib/metadata-match-assertion.js');
 });
