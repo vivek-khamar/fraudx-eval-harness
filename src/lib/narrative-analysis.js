@@ -77,4 +77,13 @@ function parseNarrativeResponse(responseOutput, claimSummary) {
   };
 }
 
-module.exports = { buildNarrativePrompt, parseNarrativeResponse };
+async function generateNarrativeAnalysis(provider, claimSummary) {
+  const prompt = buildNarrativePrompt(claimSummary);
+  const response = await provider.callApi(prompt);
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  return parseNarrativeResponse(response.output, claimSummary);
+}
+
+module.exports = { buildNarrativePrompt, parseNarrativeResponse, generateNarrativeAnalysis };

@@ -105,3 +105,34 @@ test('parseNarrativeResponse throws when perQuestionVerdicts is missing an entry
 test('parseNarrativeResponse throws a clear error when no JSON object is present', () => {
   assert.throws(() => parseNarrativeResponse('not json at all', { questions: [] }), /Could not find a JSON object/);
 });
+
+const { generateNarrativeAnalysis } = require('./narrative-analysis');
+
+test('generateNarrativeAnalysis calls provider.callApi exactly once with the built prompt and returns the parsed result', async () => {
+  const claimSummary = sampleClaimSummary();
+  const calls = [];
+  const provider = {
+    callApi: async (prompt) => {
+      calls.push(prompt);
+      return {
+        output: JSON.stringify({
+          summaryPanel: ['a'], questionsPanel: ['b'], citationsPanel: ['c'], overallPanel: ['d'],
+          finalVerdict: { netRead: ['e'], whatWentRight: ['f'], whatWentWrong: ['g'], reasoning: 'h' },
+          perQuestionVerdicts: { 1: 'Right call', 2: 'Wrong call' },
+        }),
+      };
+    },
+  };
+
+  const result = await generateNarrativeAnalysis(provider, claimSummary);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0], buildNarrativePrompt(claimSummary));
+  assert.deepEqual(result.summaryPanel, ['a']);
+});
+
+test('generateNarrativeAnalysis throws when provider.callApi returns an error', async () => {
+  const claimSummary = sampleClaimSummary();
+  const provider = { callApi: async () => ({ error: 'rate limited' }) };
+  await assert.rejects(() => generateNarrativeAnalysis(provider, claimSummary), /rate limited/);
+});
