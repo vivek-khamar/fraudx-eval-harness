@@ -235,6 +235,7 @@ async function qaMatchAssertion(output, context) {
       question: q.question,
       actualAnswer,
       riskStatus,
+      expectedRiskStatus: q.expectedRiskStatus,
       riskStatusMatches,
       matches,
       reason,

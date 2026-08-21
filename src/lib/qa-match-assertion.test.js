@@ -162,6 +162,7 @@ test('qaMatchAssertion returns one perQuestionBreakdown entry per question', asy
     question: 'Q1?',
     actualAnswer: 'ans1',
     riskStatus: 'RISK_DETECTED',
+    expectedRiskStatus: 'RISK_DETECTED',
     riskStatusMatches: true,
     matches: true,
     reason: 'looks right',
@@ -704,4 +705,25 @@ test('qaMatchAssertion lists a fileName cited via two different chunks only once
   const result = await qaMatchAssertion(output, fakeContext());
 
   assert.deepEqual(result.perQuestionBreakdown[0].actualCitedFileNames, ['same.pdf']);
+});
+
+test('qaMatchAssertion carries expectedRiskStatus through to perQuestionBreakdown', async (t) => {
+  mockLoadApiProvider(t, async () => ({ output: JSON.stringify({ matches: true, score: 90, reason: 'ok' }) }));
+
+  const output = {
+    report: {
+      questions: [{ predefinedQuestionId: 1, question: 'Q1?', riskStatus: 'RISK_DETECTED', answer: 'Yes.' }],
+    },
+  };
+  const context = {
+    vars: {
+      expected: {
+        qa: [{ predefinedQuestionId: 1, question: 'Q1?', expectedRiskStatus: 'UNSURE', expectedAnswerSummary: 'Unsure.' }],
+      },
+    },
+    test: { options: { provider: 'openai:chat:gpt-4o' } },
+  };
+
+  const result = await qaMatchAssertion(output, context);
+  assert.equal(result.perQuestionBreakdown[0].expectedRiskStatus, 'UNSURE');
 });

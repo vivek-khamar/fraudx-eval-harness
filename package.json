@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "pretest": "",
-    "test": "node --test src/provider.test.js src/s3-client.test.js src/fraudx-client.test.js test/config-shape.test.js src/lib/qa-match-assertion.test.js src/lib/metadata-match-assertion.test.js src/lib/extract-cited-file-names.test.js src/lib/resolve-model-id.test.js scripts/score-dashboard.test.js scripts/generate-pdf-report.test.js scripts/build-tests-vars.test.js",
+    "test": "node --test src/provider.test.js src/s3-client.test.js src/fraudx-client.test.js test/config-shape.test.js src/lib/qa-match-assertion.test.js src/lib/metadata-match-assertion.test.js src/lib/extract-cited-file-names.test.js src/lib/resolve-model-id.test.js src/lib/narrative-analysis.test.js src/lib/html-report-template.test.js scripts/score-dashboard.test.js scripts/generate-pdf-report.test.js scripts/build-tests-vars.test.js",
     "generate:tests": "node scripts/build-tests-vars.js",
     "preeval": "npm run generate:tests",
     "eval:raw": "PROMPTFOO_CACHE_ENABLED=false promptfoo eval -c config/promptfooconfig.yaml --no-cache --max-concurrency 1 --output results.json",
@@ -24,6 +24,6 @@
     "@aws-sdk/client-s3": "^3.1111.0",
     "dotenv": "^17.4.2",
     "pdf-parse": "^2.4.5",
-    "pdfkit": "^0.19.1"
+    "puppeteer": "^25.8.0"
   }
 }

@@ -180,6 +180,10 @@ const server = http.createServer((req, res) => {
           reportId: 'mock-report-id',
           bucketId: 99999,
           summary: 'Mock claim summary for local dry runs.',
+          fraudRiskScore: 0.5,
+          claimantName: 'Mock Claimant',
+          defendant: 'Mock Defendant',
+          insuranceFirm: 'Mock Insurance',
           questions: [
             {
               predefinedQuestionId: 1,
