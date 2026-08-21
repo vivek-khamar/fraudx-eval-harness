@@ -239,11 +239,41 @@ test('renderIngestionSummary lists failed documents when present', () => {
   assert.match(html, /timeout/);
 });
 
+test('renderIngestionSummary includes an "Ingestion outcome" chart card with a proportional Complete bar and legend, when all docs succeed', () => {
+  const html = renderIngestionSummary(sampleClaimData());
+  assert.match(html, /Ingestion outcome/);
+  assert.match(html, /flex:5;background:var\(--good\)[^"]*">Complete/);
+  assert.match(html, /Complete \(5\)/);
+  assert.match(html, /All 5 claim documents ingested cleanly/);
+});
+
+test('renderIngestionSummary\'s outcome chart shows a proportional Failed segment and count when some docs fail', () => {
+  const claimData = sampleClaimData({ docsComplete: 4, docsFailed: 1, failedDocuments: [{ fileName: 'a.pdf', error: 'timeout' }] });
+  const html = renderIngestionSummary(claimData);
+  assert.match(html, /flex:4;background:var\(--good\)/);
+  assert.match(html, /flex:1;background:var\(--critical\)/);
+  assert.match(html, /Failed \(1\)/);
+  assert.match(html, /4 of 5 claim documents ingested cleanly; 1 failed/);
+});
+
 test('renderProcessingSummary shows a per-step breakdown table marked N/A (no per-step telemetry exists)', () => {
   const html = renderProcessingSummary(sampleClaimData());
   assert.match(html, /722\.5s/);
   assert.match(html, /N\/A/);
   assert.match(html, /Not captured in source/);
+});
+
+test('renderProcessingSummary includes a "Where wall-clock time went" chart card with two proportional bars and a computed ratio caption', () => {
+  const html = renderProcessingSummary(sampleClaimData());
+  assert.match(html, /Where wall-clock time went/);
+  assert.match(html, /class="bl">Ingestion<\/div>/);
+  assert.match(html, /class="bl">Claim processing<\/div>/);
+  assert.match(html, /width:33\.7%;background:var\(--aqua\)/);
+  assert.match(html, /width:66\.3%;background:var\(--blue\)/);
+  assert.match(html, /366\.8s &middot; 34%/);
+  assert.match(html, /722\.5s &middot; 66%/);
+  // 722.5 / 366.8 ≈ 1.97 -> rounds to "2.0" in the caption's computed ratio, not a hardcoded "2×".
+  assert.match(html, /Claim processing took roughly 2\.0&times; the ingestion time\./);
 });
 
 const { renderAccuracySummary, renderFinalVerdict } = require('./html-report-template');

@@ -88,6 +88,11 @@ const REPORT_CSS = `
   .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--ink-2)}
   .legend span{display:flex;align-items:center;gap:6px}
   svg{display:block;max-width:100%;height:auto;overflow:visible}
+  .barrow{display:flex;align-items:center;gap:12px;margin:9px 0}
+  .barrow .bl{width:150px;font-size:12px;color:var(--ink-2);text-align:right;flex:none}
+  .barrow .bt{flex:1;background:#eef0f3;border-radius:6px;height:20px;position:relative;overflow:hidden}
+  .barrow .bf{height:100%;border-radius:6px}
+  .barrow .bv{font-size:11.5px;font-weight:700;color:var(--ink);width:74px;flex:none}
   table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12.5px;
     background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
   thead th{background:#f1f2f5;text-align:left;padding:10px 12px;font-size:10.5px;
@@ -362,6 +367,28 @@ function renderKpiCards(claimData) {
   </div>`;
 }
 
+// A synchronous pipeline has only two real outcomes per document (complete or
+// failed) — no "in-flight" state to report, unlike the reference's GX
+// monitoring context, so that third legend entry is dropped rather than faked.
+function renderIngestionOutcomeChart(claimData) {
+  const { docsSubmitted, docsComplete, docsFailed } = claimData;
+  const bars = [
+    docsComplete > 0 ? `<div style="flex:${docsComplete};background:var(--good);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px">Complete &middot; ${docsComplete}</div>` : '',
+    docsFailed > 0 ? `<div style="flex:${docsFailed};background:var(--critical);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px">Failed &middot; ${docsFailed}</div>` : '',
+  ].join('');
+  const docsWord = docsSubmitted === 1 ? 'document' : 'documents';
+  const caption = docsFailed === 0
+    ? `All ${docsSubmitted} claim ${docsWord} ingested cleanly.`
+    : `${docsComplete} of ${docsSubmitted} claim ${docsWord} ingested cleanly; ${docsFailed} failed.`;
+  return `
+    <div class="chart-card">
+      <h4>Ingestion outcome</h4>
+      <div style="height:26px;border-radius:8px;overflow:hidden;background:#eef0f3;margin-top:12px;display:flex">${bars}</div>
+      <div class="legend"><span><span class="dot" style="background:var(--good)"></span>Complete (${docsComplete})</span><span><span class="dot" style="background:var(--critical)"></span>Failed (${docsFailed})</span></div>
+      <p class="cap">${caption}</p>
+    </div>`;
+}
+
 function renderIngestionSummary(claimData) {
   const failedList = claimData.failedDocuments.length > 0
     ? `<p class="cap"><b>Failed documents:</b> ${claimData.failedDocuments.map((d) => `${escapeHtml(d.fileName)}: ${escapeHtml(d.error)}`).join('; ')}</p>`
@@ -376,8 +403,31 @@ function renderIngestionSummary(claimData) {
       <div class="card"><div class="big ${claimData.docsFailed > 0 ? 'red' : ''}">${claimData.docsFailed}</div><div class="lab">Docs failed</div></div>
       <div class="card"><div class="big">${formatSeconds(claimData.ingestionTimeMs)}</div><div class="lab">Ingestion time</div></div>
     </div>
+    ${renderIngestionOutcomeChart(claimData)}
     ${failedList}
   </section>`;
+}
+
+// Computes the ratio dynamically from this claim's own times rather than
+// hardcoding the reference's "roughly 2×" — a claim where ingestion dominates
+// gets the inverse phrasing instead of a nonsensical "2× the ingestion time".
+function renderWallClockChart(claimData) {
+  const { ingestionTimeMs, processingTimeMs } = claimData;
+  const totalMs = ingestionTimeMs + processingTimeMs;
+  const ingestionPct = totalMs ? (ingestionTimeMs / totalMs) * 100 : 0;
+  const processingPct = totalMs ? (processingTimeMs / totalMs) * 100 : 0;
+  const caption = ingestionTimeMs <= 0
+    ? 'Ingestion time was zero, so all wall-clock time went to claim processing.'
+    : processingTimeMs / ingestionTimeMs >= 1
+      ? `Claim processing took roughly ${(processingTimeMs / ingestionTimeMs).toFixed(1)}&times; the ingestion time.`
+      : `Ingestion took roughly ${(ingestionTimeMs / processingTimeMs).toFixed(1)}&times; the claim processing time.`;
+  return `
+    <div class="chart-card">
+      <h4>Where wall-clock time went</h4>
+      <div class="barrow"><div class="bl">Ingestion</div><div class="bt"><div class="bf" style="width:${ingestionPct.toFixed(1)}%;background:var(--aqua)"></div></div><div class="bv">${formatSeconds(ingestionTimeMs)} &middot; ${Math.round(ingestionPct)}%</div></div>
+      <div class="barrow"><div class="bl">Claim processing</div><div class="bt"><div class="bf" style="width:${processingPct.toFixed(1)}%;background:var(--blue)"></div></div><div class="bv">${formatSeconds(processingTimeMs)} &middot; ${Math.round(processingPct)}%</div></div>
+      <p class="cap">${caption}</p>
+    </div>`;
 }
 
 function renderProcessingSummary(claimData) {
@@ -391,6 +441,7 @@ function renderProcessingSummary(claimData) {
       <div class="card"><div class="big blue">${formatSeconds(claimData.processingTimeMs)}</div><div class="lab">Claim processing time</div></div>
       <div class="card"><div class="big">${formatSeconds(totalWallMs)}</div><div class="lab">Total wall-clock</div></div>
     </div>
+    ${renderWallClockChart(claimData)}
     <div class="chart-card">
       <h4>Per-step processing breakdown</h4>
       <table>
