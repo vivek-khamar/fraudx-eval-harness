@@ -102,7 +102,6 @@ const REPORT_CSS = `
   tbody tr:last-child td{border-bottom:none}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   td.ctr,th.ctr{text-align:center}
-  .tot td{font-weight:800;background:#f7f8fa}
   .row-miss{background:#fdf2f2}
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;
     padding:3px 9px;border-radius:999px;white-space:nowrap;line-height:1.3}
@@ -437,26 +436,13 @@ function renderProcessingSummary(claimData) {
   return `
   <section>
     <div class="sec-head"><span class="sec-num">2</span><h2>Processing Summary</h2></div>
-    <p class="sec-sub">Time spent turning ingested documents into scored risk answers. Only total ingestion and claim-processing time are emitted; per-step timings are marked <code>N/A</code>.</p>
+    <p class="sec-sub">Time spent turning ingested documents into scored risk answers. Only total ingestion and claim-processing time are emitted by the platform — it never reports a per-step breakdown.</p>
     <div class="cards c3">
       <div class="card"><div class="big">${formatSeconds(claimData.ingestionTimeMs)}</div><div class="lab">Ingestion time</div></div>
       <div class="card"><div class="big blue">${formatSeconds(claimData.processingTimeMs)}</div><div class="lab">Claim processing time</div></div>
       <div class="card"><div class="big">${formatSeconds(totalWallMs)}</div><div class="lab">Total wall-clock</div></div>
     </div>
     ${renderWallClockChart(claimData)}
-    <div class="chart-card">
-      <h4>Per-step processing breakdown</h4>
-      <table>
-        <thead><tr><th>Processing step</th><th class="num">Time taken</th><th>Notes</th></tr></thead>
-        <tbody>
-          <tr><td>Entity / claim profile generation</td><td class="num">N/A</td><td>Not captured in source</td></tr>
-          <tr><td>Question answering</td><td class="num">N/A</td><td>Not captured in source</td></tr>
-          <tr><td>Citation extraction / matching</td><td class="num">N/A</td><td>Not captured in source</td></tr>
-          <tr><td>Summary / metadata generation</td><td class="num">N/A</td><td>Not captured in source</td></tr>
-          <tr class="tot"><td>Total claim processing</td><td class="num">${formatSeconds(claimData.processingTimeMs)}</td><td>Only total was emitted</td></tr>
-        </tbody>
-      </table>
-    </div>
   </section>`;
 }
 
