@@ -50,7 +50,7 @@ const REPORT_CSS = `
   .kicker{font-size:11px;font-weight:700;letter-spacing:2px;color:#8b93bf;margin:20px 0 6px}
   h1.title{font-size:30px;font-weight:800;margin:0 0 8px;letter-spacing:-.5px}
   .subtitle{color:#c3c8e0;font-size:14px;margin:0;max-width:640px}
-  .meta-row{display:grid;grid-template-columns:repeat(4,1fr);gap:18px 26px;margin-top:24px;
+  .meta-row{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 26px;margin-top:24px;
     border-top:1px solid rgba(255,255,255,.13);padding-top:20px}
   .meta-row .m-lab{font-size:9.5px;font-weight:700;letter-spacing:1.5px;color:#7f88b5;margin-bottom:4px}
   .meta-row .m-val{font-size:14px;font-weight:600;color:#eef0f8}
@@ -347,6 +347,8 @@ function renderHeroHeader(claimData) {
       <div><div class="m-lab">CLAIMANT</div><div class="m-val">${escapeHtml(claimData.claimantName)}</div></div>
       <div><div class="m-lab">GENERATED</div><div class="m-val">${claimData.generatedAt}</div></div>
       <div><div class="m-lab">DOCS INGESTED</div><div class="m-val">${docsLine} &middot; ${docsPct}%</div></div>
+      <div><div class="m-lab">QUESTIONS SCORED</div><div class="m-val">${claimData.perQuestionBreakdown.length}</div></div>
+      <div><div class="m-lab">ENGINE</div><div class="m-val">EyeLevel FraudX</div></div>
     </div>
   </header>`;
 }

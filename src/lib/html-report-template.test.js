@@ -205,6 +205,7 @@ function sampleClaimData(overrides = {}) {
     fraudRiskScoreExpected: 0.7524,
     fraudRiskScoreActual: 0.7071,
     fraudRiskScoreMatches: false,
+    perQuestionBreakdown: [],
     ...overrides,
   };
 }
@@ -220,6 +221,12 @@ test('renderHeroHeader includes bucket id, claimant name, generated-at, docs ing
   assert.match(html, /2026-08-20T12:07:23/);
   assert.match(html, /5\s*\/\s*5/);
   assert.match(html, /66%/);
+});
+
+test('renderHeroHeader includes the questions-scored count and the engine label', () => {
+  const html = renderHeroHeader(sampleClaimData({ perQuestionBreakdown: [{}, {}, {}] }));
+  assert.match(html, /QUESTIONS SCORED[\s\S]*?<div class="m-val">3<\/div>/);
+  assert.match(html, /ENGINE[\s\S]*?<div class="m-val">EyeLevel FraudX<\/div>/);
 });
 
 test('renderKpiCards shows all four headline percentages and the risk-score-vs-gold delta', () => {
