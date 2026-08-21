@@ -14,10 +14,6 @@ test('REPORT_CSS is a non-empty string containing the navy/lime palette', () => 
   assert.match(REPORT_CSS, /--lime/);
 });
 
-test('REPORT_CSS styles the ".tot" total-row class used by the processing-breakdown table', () => {
-  assert.match(REPORT_CSS, /\.tot td\{/);
-});
-
 test('REPORT_CSS does not force whole <section>s to avoid splitting across a printed page (that wastes a full page of blank space per short section)', () => {
   assert.doesNotMatch(REPORT_CSS, /section\s*\{\s*break-inside\s*:\s*avoid-page/);
 });
@@ -285,11 +281,11 @@ test('renderIngestionSummary\'s outcome chart shows a proportional Failed segmen
   assert.match(html, /4 of 5 claim documents ingested cleanly; 1 failed/);
 });
 
-test('renderProcessingSummary shows a per-step breakdown table marked N/A (no per-step telemetry exists)', () => {
+test('renderProcessingSummary omits the per-step breakdown table entirely (the platform never returns per-step timing, for any run)', () => {
   const html = renderProcessingSummary(sampleClaimData());
   assert.match(html, /722\.5s/);
-  assert.match(html, /N\/A/);
-  assert.match(html, /Not captured in source/);
+  assert.doesNotMatch(html, /Per-step processing breakdown/);
+  assert.doesNotMatch(html, /Not captured in source/);
 });
 
 test('renderProcessingSummary includes a "Where wall-clock time went" chart card with two proportional bars and a computed ratio caption', () => {
