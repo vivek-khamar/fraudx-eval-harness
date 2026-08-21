@@ -100,7 +100,13 @@ function buildClaimData(result, generatedAt) {
   const expected = result.vars.expected;
   const namedScores = result.gradingResult.namedScores;
   const qaMatchComponent = findComponent(result.gradingResult, 'qa_match');
-  const perQuestionBreakdown = sortByRiskStatus((qaMatchComponent && qaMatchComponent.perQuestionBreakdown) || []);
+  // predefinedQuestionId is minted fresh by the platform on every claim-processing run — not
+  // stable across runs, and not sequential. displayNumber is the report's own stable Q1, Q2, ...
+  // numbering, assigned once here (after sorting) and reused everywhere a question is shown or
+  // referenced, including the narrative LLM's own prompt/response, so the report's Q-numbers and
+  // the narrative's cross-references to them ("Q1, Q2...") always agree.
+  const perQuestionBreakdown = sortByRiskStatus((qaMatchComponent && qaMatchComponent.perQuestionBreakdown) || [])
+    .map((q, i) => ({ ...q, displayNumber: i + 1 }));
   const failedDocuments = output.failedDocuments || [];
 
   const fraudScoreMatches = fraudRiskScoreMatches(report.fraudRiskScore, expected.fraudRiskScore);
@@ -143,7 +149,7 @@ function buildNarrativeClaimSummary(claimData) {
     semanticByGoldCategory: computeSemanticByGoldCategory(claimData.perQuestionBreakdown),
     metadataMatch: claimData.metadataMatch,
     questions: claimData.perQuestionBreakdown.map((q) => ({
-      id: q.predefinedQuestionId,
+      id: q.displayNumber,
       question: q.question,
       expectedRiskStatus: q.expectedRiskStatus,
       riskStatus: q.riskStatus,

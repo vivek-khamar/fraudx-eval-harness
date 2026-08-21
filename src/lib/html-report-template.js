@@ -538,7 +538,7 @@ function scoreBar(score) {
 function renderDetailedResultsTable(claimData) {
   const rows = claimData.perQuestionBreakdown.map((q) => `
     <tr class="${q.riskStatusMatches ? '' : 'row-miss'}">
-      <td><b>Q${q.predefinedQuestionId}</b></td>
+      <td><b>Q${q.displayNumber}</b></td>
       <td>${riskChip(q.riskStatus)}</td>
       <td>${riskChip(q.expectedRiskStatus)}</td>
       <td class="ctr"><span class="chip ${q.riskStatusMatches ? 'yes' : 'no'}">${q.riskStatusMatches ? 'MATCH' : 'MISS'}</span></td>
@@ -597,7 +597,7 @@ function renderQaAppendix(claimData) {
   const cards = claimData.perQuestionBreakdown.map((q) => {
     const kind = verdictKind(q);
     const verdictSymbol = kind === 'good' ? '&#10003;' : kind === 'bad' ? '&#10007;' : '&asymp;';
-    const oneLiner = claimData.narrative.perQuestionVerdicts[q.predefinedQuestionId] || '';
+    const oneLiner = claimData.narrative.perQuestionVerdicts[q.displayNumber] || '';
     const { cleanedText, legend } = formatAnswerWithCitations(q.actualAnswer);
     const answerHtml = escapeHtml(cleanedText).replace(/\n/g, '<br>').replace(/\[(\d+)\]/g, '<sup class="c">[$1]</sup>');
     const groupedSources = groupSourcesLegend(legend);
@@ -613,7 +613,7 @@ function renderQaAppendix(claimData) {
     return `
     <div class="qcard">
       <div class="qtop">
-        <span class="qid">Q${q.predefinedQuestionId}</span>
+        <span class="qid">Q${q.displayNumber}</span>
         <span class="qtext">${escapeHtml(q.question)}</span>
         <span class="qchips">${riskChip(q.riskStatus)}</span>
       </div>

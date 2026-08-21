@@ -360,14 +360,19 @@ function fullClaimData() {
     ],
     perQuestionBreakdown: [
       {
-        predefinedQuestionId: 1,
+        // predefinedQuestionId is a platform-minted, non-sequential id — deliberately
+        // distinct from displayNumber so a test can catch any regression back to
+        // displaying/keying by the raw id instead of the sequential display position.
+        predefinedQuestionId: 8801,
+        displayNumber: 1,
         question: 'Are any of the medical providers bad actors?',
         actualAnswer: 'RISK DETECTED: Provider X is a bad actor <InTextCitation url="https://a.test/a.pdf" fileName="a.pdf" documentId="d1" chunkId="c1"></InTextCitation>.',
         riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'RISK_DETECTED', riskStatusMatches: true,
         score: 90, citationMatchScore: 50, reason: 'Good match.',
       },
       {
-        predefinedQuestionId: 2,
+        predefinedQuestionId: 8802,
+        displayNumber: 2,
         question: 'Are any attorneys bad actors?',
         actualAnswer: 'RISK DETECTED: attorney is a bad actor.',
         riskStatus: 'RISK_DETECTED', expectedRiskStatus: 'UNSURE', riskStatusMatches: false,
@@ -378,6 +383,7 @@ function fullClaimData() {
       summaryPanel: ['Summary bullet.'], questionsPanel: ['Questions bullet.'],
       citationsPanel: ['Citations bullet.'], overallPanel: ['Overall bullet.'],
       finalVerdict: { netRead: ['Net read bullet.'], whatWentRight: ['Right bullet.'], whatWentWrong: ['Wrong bullet.'], reasoning: 'Reasoning paragraph.' },
+      // Keyed by displayNumber (1, 2), not by the 8801/8802 predefinedQuestionIds above.
       perQuestionVerdicts: { 1: 'Right risk call, well cited.', 2: 'Wrong direction entirely.' },
     },
   };
@@ -394,6 +400,13 @@ test('renderDetailedResultsTable renders one row per question, tinting mismatche
 test('renderDetailedResultsTable gives its heading the same navy sec-num badge as the numbered sections, using the reference\'s "＝" marker', () => {
   const html = renderDetailedResultsTable(fullClaimData());
   assert.match(html, /<span class="sec-num">＝<\/span><h2>Detailed Results Table<\/h2>/);
+});
+
+test('renderDetailedResultsTable numbers rows Q1, Q2, ... by sequential display position, not by the platform-minted predefinedQuestionId', () => {
+  const html = renderDetailedResultsTable(fullClaimData());
+  assert.doesNotMatch(html, /Q8801|Q8802/);
+  assert.match(html, /<b>Q1<\/b>/);
+  assert.match(html, /<b>Q2<\/b>/);
 });
 
 test('renderMetadataMatchTable renders expected/actual/match for every field', () => {
@@ -424,12 +437,17 @@ test('renderQaAppendix renders a card per question with chip, verdict line, clea
   assert.match(html, /<sup class="c">\[1\]<\/sup>/);
   // Q2 has no citations at all — the legend must say so, not render an empty "Sources:" line.
   assert.match(html, /No source document cited/);
+  // qid badges use the sequential display number, not the platform-minted predefinedQuestionId.
+  assert.match(html, /<span class="qid">Q1<\/span>/);
+  assert.match(html, /<span class="qid">Q2<\/span>/);
+  assert.doesNotMatch(html, /Q8801|Q8802/);
 });
 
 test('renderQaAppendix renders a citation source without a url as plain text, not a link', () => {
   const claimData = fullClaimData();
   claimData.perQuestionBreakdown.push({
-    predefinedQuestionId: 3,
+    predefinedQuestionId: 9003,
+    displayNumber: 3,
     question: 'Is there a third question?',
     actualAnswer: 'RISK UNKNOWN: no url here <InTextCitation fileName="b.pdf" documentId="d2" chunkId="c2"></InTextCitation>.',
     riskStatus: 'UNSURE', expectedRiskStatus: 'UNSURE', riskStatusMatches: true,
