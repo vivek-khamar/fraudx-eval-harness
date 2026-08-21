@@ -22,8 +22,18 @@ test('REPORT_CSS does not force whole <section>s to avoid splitting across a pri
   assert.doesNotMatch(REPORT_CSS, /section\s*\{\s*break-inside\s*:\s*avoid-page/);
 });
 
-test('REPORT_CSS still keeps individual cards/tables/panels intact across a page break', () => {
-  assert.match(REPORT_CSS, /\.qcard,\.card,\.chart-card,\.panel,table\{break-inside:avoid\}/);
+test('REPORT_CSS still keeps individual Q&A cards/stat cards/panels intact across a page break', () => {
+  assert.match(REPORT_CSS, /\.qcard,\.card,\.panel\{break-inside:avoid\}/);
+});
+
+test('REPORT_CSS lets chart cards and tables split across a page break, so a short section doesn\'t force a mostly-blank page', () => {
+  // A 35-row Detailed Results Table or a tall Accuracy Summary chart-card is often taller than
+  // one page's remaining space — forcing it whole onto the next page (as break-inside:avoid did)
+  // wastes that remaining space without even succeeding at keeping it on one page, since a table
+  // taller than a full page still has to split somewhere. Letting it split at a natural row/element
+  // boundary instead avoids the wasted page with no worse a result.
+  assert.doesNotMatch(REPORT_CSS, /\.chart-card[^{]*\{[^}]*break-inside\s*:\s*avoid/);
+  assert.doesNotMatch(REPORT_CSS, /(?:^|[,\s])table\s*\{[^}]*break-inside\s*:\s*avoid/m);
 });
 
 test('REPORT_CSS avoids orphaning a section heading alone at the bottom of a page', () => {

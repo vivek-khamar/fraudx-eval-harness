@@ -141,7 +141,7 @@ const REPORT_CSS = `
     font-size:11px;color:var(--muted);line-height:1.6}
   @media print{
     body{background:#fff} .wrap{max-width:100%}
-    .qcard,.card,.chart-card,.panel,table{break-inside:avoid}
+    .qcard,.card,.panel{break-inside:avoid}
     .sec-head{break-after:avoid-page}
   }
 `;
