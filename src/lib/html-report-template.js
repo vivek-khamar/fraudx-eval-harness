@@ -142,7 +142,7 @@ const REPORT_CSS = `
   @media print{
     body{background:#fff} .wrap{max-width:100%}
     .qcard,.card,.chart-card,.panel,table{break-inside:avoid}
-    section{break-inside:avoid-page}
+    .sec-head{break-after:avoid-page}
   }
 `;
 

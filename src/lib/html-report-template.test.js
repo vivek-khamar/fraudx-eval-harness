@@ -18,6 +18,18 @@ test('REPORT_CSS styles the ".tot" total-row class used by the processing-breakd
   assert.match(REPORT_CSS, /\.tot td\{/);
 });
 
+test('REPORT_CSS does not force whole <section>s to avoid splitting across a printed page (that wastes a full page of blank space per short section)', () => {
+  assert.doesNotMatch(REPORT_CSS, /section\s*\{\s*break-inside\s*:\s*avoid-page/);
+});
+
+test('REPORT_CSS still keeps individual cards/tables/panels intact across a page break', () => {
+  assert.match(REPORT_CSS, /\.qcard,\.card,\.chart-card,\.panel,table\{break-inside:avoid\}/);
+});
+
+test('REPORT_CSS avoids orphaning a section heading alone at the bottom of a page', () => {
+  assert.match(REPORT_CSS, /\.sec-head\{[^}]*break-after:avoid-page/);
+});
+
 test('escapeHtml escapes the five HTML-significant characters', () => {
   assert.equal(escapeHtml(`<a href="x">A & B's "quote"</a>`), '&lt;a href=&quot;x&quot;&gt;A &amp; B&#39;s &quot;quote&quot;&lt;/a&gt;');
 });
