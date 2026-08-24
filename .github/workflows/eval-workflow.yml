@@ -53,16 +53,16 @@ jobs:
       group: fraudx-full-eval
       cancel-in-progress: false
     env:
-      FRAUDX_ENDPOINT_URI: ${{ secrets.FRAUDX_ENDPOINT_URI }}
+      FRAUDX_ENDPOINT_URI: ${{ vars.FRAUDX_ENDPOINT_URI }}
       FRAUDX_LOGIN_EMAIL: ${{ secrets.FRAUDX_LOGIN_EMAIL }}
       FRAUDX_LOGIN_PASSWORD: ${{ secrets.FRAUDX_LOGIN_PASSWORD }}
-      GRADER_PROVIDER: ${{ secrets.GRADER_PROVIDER }}
+      GRADER_PROVIDER: ${{ vars.GRADER_PROVIDER }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_S3_BUCKET_NAME: ${{ vars.AWS_S3_BUCKET_NAME }}
       CLAIM_NAME: ${{ inputs.newClaimName }}
       SOURCE_BUCKET_ID: ${{ inputs.sourceBucketId }}
       INGESTION_MODEL_NAME: ${{ inputs.ingestionModelName }}
