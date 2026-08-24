@@ -16,7 +16,7 @@ allow() { echo '{"decision": "allow"}'; exit 0; }
 [ -z "$CMD" ] && allow
 
 if echo "$CMD" | grep -qE '([[:space:]/]|^)(\.env|[A-Za-z0-9_.-]*\.pem|[A-Za-z0-9_.-]*\.key)([[:space:]]|$|['"'"'\"])'; then
-  block "Blocked: this command touches a sensitive file (.env/.pem/.key) in fraudx-claim-eval. Confirm with the user before accessing credentials directly."
+  block "Blocked: this command touches a sensitive file (.env/.pem/.key) in fraudx-eval-harness. Confirm with the user before accessing credentials directly."
 fi
 
 allow

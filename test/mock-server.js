@@ -1,4 +1,4 @@
-// fraudx-claim-eval/test/mock-server.js
+// fraudx-eval-harness/test/mock-server.js
 'use strict';
 
 const http = require('node:http');
