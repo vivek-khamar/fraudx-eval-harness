@@ -144,15 +144,18 @@ test('callApi measures ingestion (the upload loop) and processing (claim trigger
   t.after(() => {
     delete process.env.FRAUDX_ENDPOINT_URI;
   });
+  // Real (not mocked) timers, so the margin between these two durations and the assertion
+  // threshold below must comfortably absorb scheduling jitter on a shared CI runner — a bare
+  // 30ms/10ms pair with a >=30 threshold has already flaked once from clock jitter alone.
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   mockFraudxClient(t, {
     ...happyPathMocks([]),
     waitForDocumentUpload: async () => {
-      await sleep(30);
+      await sleep(150);
       return { status: 'Completed' };
     },
     waitForClaimProcessing: async () => {
-      await sleep(10);
+      await sleep(50);
       return { bucketStatus: 'SUCCESS', latestReportId: 'report-1' };
     },
   });
@@ -160,7 +163,7 @@ test('callApi measures ingestion (the upload loop) and processing (claim trigger
   const provider = new Provider();
   const result = await provider.callApi('FX-GOLD-5K-v1', fakeContext());
 
-  assert.ok(result.output.ingestion.timeMs >= 30, 'ingestion must include the upload loop\'s own wait time');
+  assert.ok(result.output.ingestion.timeMs >= 100, 'ingestion must include the upload loop\'s own wait time');
   assert.ok(
     result.output.ingestion.timeMs > result.output.processing.timeMs,
     'ingestion (longer simulated wait) must differ from processing (shorter simulated wait), proving they are measured independently'
